@@ -7,12 +7,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy and install Python deps
-COPY pyproject.toml .
-RUN pip install --no-cache-dir -e .
+# Copy backend code from repo root context
+COPY apps/backend/ .
 
-# Copy app code
-COPY . .
+# Install Python deps
+RUN pip install --no-cache-dir -e .
 
 # Expose port
 EXPOSE ${PORT:-8000}
