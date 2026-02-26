@@ -1,0 +1,13 @@
+{
+  "name": "backend",
+  "private": true,
+  "scripts": {
+    "setup": "python3 -m venv .venv && ./.venv/bin/pip install -e .",
+    "dev": ". .venv/bin/activate && uvicorn server:app --host 127.0.0.1 --port 8000",
+    "start": ". .venv/bin/activate && uvicorn server:app --host 0.0.0.0 --port 8000",
+    "build": "echo 'No JS build for backend'",
+    "lint": "echo 'Use Python linters in apps/backend'",
+    "typecheck": "echo 'Use Python type checks in apps/backend'",
+    "format": "echo 'Use Python formatters in apps/backend'"
+  }
+}

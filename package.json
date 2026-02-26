@@ -7,6 +7,12 @@
     "packages/*"
   ],
   "scripts": {
+    "setup:frontend": "bun install",
+    "setup:backend": "bun run --cwd apps/backend setup",
+    "setup": "bun run setup:frontend && bun run setup:backend",
+    "dev:frontend": "bun run --cwd apps/web dev",
+    "dev:backend": "bun run --cwd apps/backend dev",
+    "dev:all": "turbo run dev --filter=web --filter=backend --parallel",
     "dev": "turbo run dev --parallel",
     "build": "turbo run build",
     "lint": "turbo run lint",
