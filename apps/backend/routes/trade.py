@@ -1,6 +1,11 @@
-"""Trade route — market-aware trade execution for agents."""
+"""Trade route — real on-chain trade execution via split + CLOB sell.
+
+Signs transactions with the server wallet (POLYCLAW_PRIVATE_KEY),
+authenticated via the agent's API key.
+"""
 
 import uuid
+from dataclasses import asdict
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,12 +14,16 @@ from typing import Optional
 
 from lib.auth import require_api_key, hash_api_key
 from lib.agent_store import AgentStore
+from lib.wallet_manager import WalletManager
 from lib.gamma_client import GammaClient
+from lib.position_storage import PositionStorage, PositionEntry
+
+# Import the real trade executor from scripts
+from scripts.trade import TradeExecutor
 
 
 router = APIRouter()
 store = AgentStore()
-gamma = GammaClient()
 
 
 class RiskConfig(BaseModel):
@@ -27,6 +36,7 @@ class TradeRequest(BaseModel):
     marketId: str
     side: str  # YES or NO
     amountUsd: float
+    skipClobSell: bool = False
     riskConfig: Optional[RiskConfig] = None
 
 
@@ -38,71 +48,107 @@ class TradeResponse(BaseModel):
     side: str
     amountUsd: float
     entryPrice: float
-    tokensReceived: float
-    executionProof: str
-    postTradeBalance: dict
+    splitTx: Optional[str]
+    clobOrderId: Optional[str]
+    clobFilled: bool
+    positionId: Optional[str]
+    error: Optional[str]
 
 
 @router.post("/trade", response_model=TradeResponse)
 async def execute_trade(req: TradeRequest, api_key: str = Depends(require_api_key)):
-    """Execute a market-aware trade for a registered agent."""
+    """Execute a real on-chain trade: split USDC into YES+NO, sell unwanted via CLOB.
 
-    # Verify API key ownership
+    Signs transactions with the server wallet (POLYCLAW_PRIVATE_KEY).
+    Requires a valid agent API key.
+    """
+
+    # 1. Verify API key ownership
     key_hash = hash_api_key(api_key)
     agent = store.get_agent_by_key_hash(key_hash)
     if not agent or agent.agent_id != req.agentId:
         raise HTTPException(status_code=403, detail="API key does not match agent")
 
-    # Validate side
-    if req.side.upper() not in ("YES", "NO"):
+    # 2. Validate inputs
+    side = req.side.upper()
+    if side not in ("YES", "NO"):
         raise HTTPException(status_code=400, detail="side must be YES or NO")
 
-    # Validate amount
     if req.amountUsd <= 0:
         raise HTTPException(status_code=400, detail="amountUsd must be positive")
 
-    # Fetch market from Polymarket to validate it exists
+    # 3. Initialize wallet from server env
+    wallet = WalletManager()
+    if not wallet.is_unlocked:
+        raise HTTPException(
+            status_code=503,
+            detail="Server wallet not configured. Set POLYCLAW_PRIVATE_KEY in .env",
+        )
+
+    # 4. Pre-flight: check slippage against live market price
+    risk = req.riskConfig or RiskConfig()
+    gamma = GammaClient()
     try:
         market = await gamma.get_market(req.marketId)
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=404, detail=f"Market not found: {req.marketId}")
 
     if market.closed or market.resolved:
         raise HTTPException(status_code=400, detail="Market is closed or resolved")
 
-    # Get entry price from market data
-    entry_price = market.yes_price if req.side.upper() == "YES" else market.no_price
-
-    # Check slippage constraints
-    risk = req.riskConfig or RiskConfig()
+    entry_price = market.yes_price if side == "YES" else market.no_price
     if entry_price > (1 - risk.maxSlippage):
         raise HTTPException(
             status_code=400,
-            detail=f"Price {entry_price} exceeds slippage limit (max acceptable: {1 - risk.maxSlippage})",
+            detail=f"Price {entry_price:.4f} exceeds slippage limit (max: {1 - risk.maxSlippage})",
         )
 
-    # Calculate expected tokens
-    tokens_received = req.amountUsd / entry_price if entry_price > 0 else 0
+    # 5. Execute the real trade — split on-chain + CLOB sell
+    executor = TradeExecutor(wallet)
+    try:
+        result = await executor.buy_position(
+            market_id=req.marketId,
+            position=side,
+            amount=req.amountUsd,
+            skip_clob_sell=req.skipClobSell,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Trade execution failed: {e}")
+    finally:
+        wallet.lock()
 
-    # Generate trade ID and execution proof
-    trade_id = f"trd_{uuid.uuid4().hex[:16]}"
-    execution_proof = f"eigen_compute_{uuid.uuid4().hex[:12]}"
+    # 6. Record position if split succeeded
+    position_id = None
+    if result.success:
+        storage = PositionStorage()
+        entry = PositionEntry(
+            position_id=str(uuid.uuid4()),
+            market_id=result.market_id,
+            question=result.question,
+            position=result.position,
+            token_id=result.wanted_token_id,
+            entry_time=datetime.now(timezone.utc).isoformat(),
+            entry_amount=result.amount,
+            entry_price=result.entry_price,
+            split_tx=result.split_tx,
+            clob_order_id=result.clob_order_id,
+            clob_filled=result.clob_filled,
+        )
+        storage.add(entry)
+        position_id = entry.position_id
 
-    # TODO: In production, this would:
-    # 1. Run policy/risk checks via Eigen Compute
-    # 2. Execute split + CLOB via Polygon Safe
-    # 3. Optionally rebalance to Solana vault
-    # 4. Record receipt and PnL delta
-
+    # 7. Return result
     return TradeResponse(
-        status="executed",
-        tradeId=trade_id,
-        market=market.question,
+        status="executed" if result.success else "failed",
+        tradeId=f"trd_{uuid.uuid4().hex[:16]}",
+        market=result.question,
         marketId=req.marketId,
-        side=req.side.upper(),
+        side=side,
         amountUsd=req.amountUsd,
-        entryPrice=entry_price,
-        tokensReceived=round(tokens_received, 4),
-        executionProof=execution_proof,
-        postTradeBalance={"usdc_e": 0.0},  # Placeholder — would come from WalletManager
+        entryPrice=result.entry_price,
+        splitTx=result.split_tx,
+        clobOrderId=result.clob_order_id,
+        clobFilled=result.clob_filled,
+        positionId=position_id,
+        error=result.error,
     )
