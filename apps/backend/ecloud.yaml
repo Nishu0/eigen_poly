@@ -1,0 +1,9 @@
+name: eigenpoly-backend
+version: "0.1.0"
+runtime: docker
+dockerfile: Dockerfile.tee
+port: 8000
+
+# Environment variables
+# DATABASE_URL and CHAINSTACK_NODE: set in EigenCloud dashboard
+# MNEMONIC: auto-provided by TEE KMS (do NOT set manually)

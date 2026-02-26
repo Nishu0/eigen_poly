@@ -14,6 +14,7 @@ class Agent:
     agent_id: str
     wallet_address: str
     api_key_hash: str
+    wallet_index: int
     polygon_safe: str
     solana_vault: str
     scopes: list[str]
@@ -23,11 +24,18 @@ class Agent:
 class AgentStore:
     """PostgreSQL-backed agent store."""
 
+    async def get_next_wallet_index(self) -> int:
+        """Get the next available wallet derivation index."""
+        pool = get_pool()
+        max_index = await pool.fetchval("SELECT COALESCE(MAX(wallet_index), -1) FROM agents")
+        return max_index + 1
+
     async def register(
         self,
         agent_id: str,
         wallet_address: str,
         api_key_hash: str,
+        wallet_index: int = 0,
         polygon_safe: str = "",
         solana_vault: str = "",
     ) -> Agent:
@@ -39,12 +47,13 @@ class AgentStore:
         try:
             await pool.execute(
                 """
-                INSERT INTO agents (agent_id, wallet_address, api_key_hash, polygon_safe, solana_vault, scopes, created_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                INSERT INTO agents (agent_id, wallet_address, api_key_hash, wallet_index, polygon_safe, solana_vault, scopes, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 """,
                 agent_id,
                 wallet_address.lower(),
                 api_key_hash,
+                wallet_index,
                 polygon_safe,
                 solana_vault,
                 scopes,
@@ -59,6 +68,7 @@ class AgentStore:
             agent_id=agent_id,
             wallet_address=wallet_address.lower(),
             api_key_hash=api_key_hash,
+            wallet_index=wallet_index,
             polygon_safe=polygon_safe,
             solana_vault=solana_vault,
             scopes=scopes,
@@ -89,8 +99,9 @@ class AgentStore:
             agent_id=row["agent_id"],
             wallet_address=row["wallet_address"],
             api_key_hash=row["api_key_hash"],
-            polygon_safe=row["polygon_safe"] or "",
-            solana_vault=row["solana_vault"] or "",
+            wallet_index=row.get("wallet_index", 0) or 0,
+            polygon_safe=row.get("polygon_safe") or "",
+            solana_vault=row.get("solana_vault") or "",
             scopes=list(row["scopes"]) if row["scopes"] else [],
             created_at=row["created_at"].isoformat() if row["created_at"] else "",
         )

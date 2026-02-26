@@ -35,7 +35,7 @@ export function Header() {
         {/* CTA */}
         <div className="hidden items-center gap-6 md:flex">
           <Link
-            href="#skills"
+            href="/skills.md"
             className="rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-all hover:opacity-80"
           >
             Skills

@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS agents (
     agent_id TEXT PRIMARY KEY,
     wallet_address TEXT NOT NULL,
     api_key_hash TEXT UNIQUE NOT NULL,
+    wallet_index INTEGER DEFAULT 0,
     polygon_safe TEXT DEFAULT '',
     solana_vault TEXT DEFAULT '',
     scopes TEXT[] DEFAULT ARRAY['trade','balance','markets'],
