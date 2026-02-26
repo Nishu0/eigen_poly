@@ -7,8 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy backend code from repo root context
-COPY apps/backend/ .
+# Copy backend code (context is apps/backend/)
+COPY . .
 
 # Install Python deps
 RUN pip install --no-cache-dir -e .
