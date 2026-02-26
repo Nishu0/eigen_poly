@@ -32,7 +32,7 @@ async def register_agent(req: RegisterRequest):
     """Register an agent, verify wallet ownership, issue API key."""
 
     # Check if already registered
-    existing = store.get_agent(req.agentId)
+    existing = await store.get_agent(req.agentId)
     if existing:
         raise HTTPException(status_code=409, detail=f"Agent '{req.agentId}' already registered")
 
@@ -46,11 +46,10 @@ async def register_agent(req: RegisterRequest):
     key_hash = hash_api_key(api_key)
 
     # Register agent with production account placeholders
-    # In production, these would create actual Polygon Safe + Solana vault
     polygon_safe = f"0x{req.walletAddress[2:6]}...safe"  # Placeholder
     solana_vault = "So1...vault"  # Placeholder
 
-    agent = store.register(
+    agent = await store.register(
         agent_id=req.agentId,
         wallet_address=req.walletAddress,
         api_key_hash=key_hash,

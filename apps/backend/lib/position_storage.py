@@ -1,28 +1,15 @@
-"""Position storage - JSON file with atomic writes."""
+"""Position storage — PostgreSQL-backed with trade recording."""
 
-import json
-import threading
-from dataclasses import dataclass, asdict
-from datetime import datetime
-from pathlib import Path
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Optional
 
-def get_storage_dir() -> Path:
-    """Get the storage directory for PolyClaw data."""
-    storage_dir = Path.home() / ".openclaw" / "polyclaw"
-    storage_dir.mkdir(parents=True, exist_ok=True)
-    return storage_dir
-
-
-POSITIONS_FILE = get_storage_dir() / "positions.json"
-
-# Global lock for thread-safe file operations
-_storage_lock = threading.Lock()
+from lib.database import get_pool
 
 
 @dataclass
 class PositionEntry:
-    """Position entry stored in JSON file."""
+    """Position entry stored in database."""
 
     position_id: str
 
@@ -46,86 +33,146 @@ class PositionEntry:
     status: str = "open"  # open, closed, resolved
     notes: Optional[str] = None
 
+    # Agent link
+    agent_id: Optional[str] = None
+
 
 class PositionStorage:
-    """Manage positions.json file with atomic writes."""
+    """PostgreSQL-backed position storage."""
 
-    def __init__(self, path: Path = POSITIONS_FILE):
-        self.path = path
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+    async def add(self, entry: PositionEntry) -> None:
+        """Add new position entry."""
+        pool = get_pool()
+        await pool.execute(
+            """
+            INSERT INTO positions (
+                position_id, agent_id, market_id, question, position, token_id,
+                entry_amount, entry_price, split_tx, clob_order_id, clob_filled,
+                status, notes, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            """,
+            entry.position_id,
+            entry.agent_id,
+            entry.market_id,
+            entry.question,
+            entry.position,
+            entry.token_id,
+            entry.entry_amount,
+            entry.entry_price,
+            entry.split_tx,
+            entry.clob_order_id,
+            entry.clob_filled,
+            entry.status,
+            entry.notes,
+            datetime.fromisoformat(entry.entry_time) if entry.entry_time else datetime.now(timezone.utc),
+        )
 
-    def load_all(self) -> list[dict]:
-        """Load all positions from JSON file."""
-        if not self.path.exists():
-            return []
-        try:
-            return json.loads(self.path.read_text())
-        except json.JSONDecodeError:
-            return []
-
-    def save_all(self, positions: list[dict]) -> None:
-        """Atomic write all positions to file."""
-        temp = self.path.with_suffix(".tmp")
-        temp.write_text(json.dumps(positions, indent=2))
-        temp.replace(self.path)
-
-    def add(self, entry: PositionEntry) -> None:
-        """Add new position entry (thread-safe)."""
-        with _storage_lock:
-            positions = self.load_all()
-            positions.append(asdict(entry))
-            self.save_all(positions)
-
-    def get(self, position_id: str) -> Optional[dict]:
+    async def get(self, position_id: str) -> Optional[dict]:
         """Get position by ID."""
-        positions = self.load_all()
-        for p in positions:
-            if p.get("position_id") == position_id:
-                return p
-        return None
+        pool = get_pool()
+        row = await pool.fetchrow("SELECT * FROM positions WHERE position_id = $1", position_id)
+        return dict(row) if row else None
 
-    def get_by_market(self, market_id: str) -> list[dict]:
+    async def get_by_market(self, market_id: str) -> list[dict]:
         """Get all positions for a market."""
-        positions = self.load_all()
-        return [p for p in positions if p.get("market_id") == market_id]
+        pool = get_pool()
+        rows = await pool.fetch("SELECT * FROM positions WHERE market_id = $1", market_id)
+        return [dict(r) for r in rows]
 
-    def get_open(self) -> list[dict]:
+    async def get_by_agent(self, agent_id: str) -> list[dict]:
+        """Get all positions for an agent."""
+        pool = get_pool()
+        rows = await pool.fetch(
+            "SELECT * FROM positions WHERE agent_id = $1 ORDER BY created_at DESC",
+            agent_id,
+        )
+        return [dict(r) for r in rows]
+
+    async def get_open(self) -> list[dict]:
         """Get all open positions."""
-        positions = self.load_all()
-        return [p for p in positions if p.get("status") == "open"]
+        pool = get_pool()
+        rows = await pool.fetch("SELECT * FROM positions WHERE status = 'open' ORDER BY created_at DESC")
+        return [dict(r) for r in rows]
 
-    def update_status(self, position_id: str, status: str) -> bool:
-        """Update position status (thread-safe)."""
-        with _storage_lock:
-            positions = self.load_all()
-            for p in positions:
-                if p.get("position_id") == position_id:
-                    p["status"] = status
-                    self.save_all(positions)
-                    return True
-            return False
+    async def update_status(self, position_id: str, status: str) -> bool:
+        """Update position status."""
+        pool = get_pool()
+        result = await pool.execute(
+            "UPDATE positions SET status = $1 WHERE position_id = $2",
+            status,
+            position_id,
+        )
+        return result == "UPDATE 1"
 
-    def update_notes(self, position_id: str, notes: str) -> bool:
-        """Update position notes (thread-safe)."""
-        with _storage_lock:
-            positions = self.load_all()
-            for p in positions:
-                if p.get("position_id") == position_id:
-                    p["notes"] = notes
-                    self.save_all(positions)
-                    return True
-            return False
+    async def update_notes(self, position_id: str, notes: str) -> bool:
+        """Update position notes."""
+        pool = get_pool()
+        result = await pool.execute(
+            "UPDATE positions SET notes = $1 WHERE position_id = $2",
+            notes,
+            position_id,
+        )
+        return result == "UPDATE 1"
 
-    def delete(self, position_id: str) -> bool:
-        """Delete position by ID (thread-safe)."""
-        with _storage_lock:
-            positions = self.load_all()
-            filtered = [p for p in positions if p.get("position_id") != position_id]
-            if len(filtered) < len(positions):
-                self.save_all(filtered)
-                return True
-            return False
-
-    def count(self) -> int:
+    async def count(self) -> int:
         """Get total position count."""
-        return len(self.load_all())
+        pool = get_pool()
+        return await pool.fetchval("SELECT COUNT(*) FROM positions")
+
+
+class TradeStorage:
+    """PostgreSQL-backed trade recording."""
+
+    async def record(
+        self,
+        trade_id: str,
+        agent_id: str,
+        market_id: str,
+        question: str,
+        side: str,
+        amount_usd: float,
+        entry_price: float,
+        split_tx: Optional[str] = None,
+        clob_order_id: Optional[str] = None,
+        clob_filled: bool = False,
+        status: str = "executed",
+        error: Optional[str] = None,
+    ) -> None:
+        """Record a trade execution."""
+        pool = get_pool()
+        await pool.execute(
+            """
+            INSERT INTO trades (
+                trade_id, agent_id, market_id, question, side, amount_usd,
+                entry_price, split_tx, clob_order_id, clob_filled, status, error
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            """,
+            trade_id,
+            agent_id,
+            market_id,
+            question,
+            side,
+            amount_usd,
+            entry_price,
+            split_tx,
+            clob_order_id,
+            clob_filled,
+            status,
+            error,
+        )
+
+    async def get_by_agent(self, agent_id: str, limit: int = 50) -> list[dict]:
+        """Get trade history for an agent."""
+        pool = get_pool()
+        rows = await pool.fetch(
+            "SELECT * FROM trades WHERE agent_id = $1 ORDER BY created_at DESC LIMIT $2",
+            agent_id,
+            limit,
+        )
+        return [dict(r) for r in rows]
+
+    async def get_trade(self, trade_id: str) -> Optional[dict]:
+        """Get single trade by ID."""
+        pool = get_pool()
+        row = await pool.fetchrow("SELECT * FROM trades WHERE trade_id = $1", trade_id)
+        return dict(row) if row else None

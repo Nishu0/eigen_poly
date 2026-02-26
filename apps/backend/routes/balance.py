@@ -2,7 +2,6 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import Optional
 
 from lib.auth import require_api_key, hash_api_key
 from lib.agent_store import AgentStore
@@ -36,7 +35,7 @@ async def get_balance(agent_id: str, api_key: str = Depends(require_api_key)):
 
     # Verify API key ownership
     key_hash = hash_api_key(api_key)
-    agent = store.get_agent_by_key_hash(key_hash)
+    agent = await store.get_agent_by_key_hash(key_hash)
     if not agent or agent.agent_id != agent_id:
         raise HTTPException(status_code=403, detail="API key does not match agent")
 

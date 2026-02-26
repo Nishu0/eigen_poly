@@ -1,11 +1,10 @@
 """Trade route — real on-chain trade execution via split + CLOB sell.
 
 Signs transactions with the server wallet (POLYCLAW_PRIVATE_KEY),
-authenticated via the agent's API key.
+authenticated via the agent's API key. Records trades and positions in PostgreSQL.
 """
 
 import uuid
-from dataclasses import asdict
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -16,7 +15,7 @@ from lib.auth import require_api_key, hash_api_key
 from lib.agent_store import AgentStore
 from lib.wallet_manager import WalletManager
 from lib.gamma_client import GammaClient
-from lib.position_storage import PositionStorage, PositionEntry
+from lib.position_storage import PositionStorage, PositionEntry, TradeStorage
 
 # Import the real trade executor from scripts
 from scripts.trade import TradeExecutor
@@ -24,6 +23,8 @@ from scripts.trade import TradeExecutor
 
 router = APIRouter()
 store = AgentStore()
+positions = PositionStorage()
+trades = TradeStorage()
 
 
 class RiskConfig(BaseModel):
@@ -60,12 +61,12 @@ async def execute_trade(req: TradeRequest, api_key: str = Depends(require_api_ke
     """Execute a real on-chain trade: split USDC into YES+NO, sell unwanted via CLOB.
 
     Signs transactions with the server wallet (POLYCLAW_PRIVATE_KEY).
-    Requires a valid agent API key.
+    Requires a valid agent API key. Records trade + position in PostgreSQL.
     """
 
     # 1. Verify API key ownership
     key_hash = hash_api_key(api_key)
-    agent = store.get_agent_by_key_hash(key_hash)
+    agent = await store.get_agent_by_key_hash(key_hash)
     if not agent or agent.agent_id != req.agentId:
         raise HTTPException(status_code=403, detail="API key does not match agent")
 
@@ -117,12 +118,32 @@ async def execute_trade(req: TradeRequest, api_key: str = Depends(require_api_ke
     finally:
         wallet.lock()
 
-    # 6. Record position if split succeeded
+    # 6. Generate trade ID
+    trade_id = f"trd_{uuid.uuid4().hex[:16]}"
+
+    # 7. Record trade in DB
+    await trades.record(
+        trade_id=trade_id,
+        agent_id=req.agentId,
+        market_id=req.marketId,
+        question=result.question,
+        side=side,
+        amount_usd=req.amountUsd,
+        entry_price=result.entry_price,
+        split_tx=result.split_tx,
+        clob_order_id=result.clob_order_id,
+        clob_filled=result.clob_filled,
+        status="executed" if result.success else "failed",
+        error=result.error,
+    )
+
+    # 8. Record position if split succeeded
     position_id = None
     if result.success:
-        storage = PositionStorage()
+        position_id = str(uuid.uuid4())
         entry = PositionEntry(
-            position_id=str(uuid.uuid4()),
+            position_id=position_id,
+            agent_id=req.agentId,
             market_id=result.market_id,
             question=result.question,
             position=result.position,
@@ -134,13 +155,12 @@ async def execute_trade(req: TradeRequest, api_key: str = Depends(require_api_ke
             clob_order_id=result.clob_order_id,
             clob_filled=result.clob_filled,
         )
-        storage.add(entry)
-        position_id = entry.position_id
+        await positions.add(entry)
 
-    # 7. Return result
+    # 9. Return result
     return TradeResponse(
         status="executed" if result.success else "failed",
-        tradeId=f"trd_{uuid.uuid4().hex[:16]}",
+        tradeId=trade_id,
         market=result.question,
         marketId=req.marketId,
         side=side,
