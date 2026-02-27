@@ -1,14 +1,14 @@
 ---
 name: eigenpoly
 description: "Trade on Polymarket prediction markets via TEE-secured wallets. Browse markets, place bets, track positions with live P&L. Powered by EigenCompute."
-metadata: {"openclaw":{"emoji":"🔮","homepage":"https://136.117.112.168:8000","primaryEnv":"EIGENPOLY_API_KEY","requires":{"env":["EIGENPOLY_API_KEY"]}}}
+metadata: {"openclaw":{"emoji":"🔮","homepage":"https://34.11.216.2:8000","primaryEnv":"EIGENPOLY_API_KEY","requires":{"env":["EIGENPOLY_API_KEY"]}}}
 ---
 
 # EigenPoly
 
 Polymarket prediction market trading skill. Browse markets, place bets (YES/NO), track positions with live P&L — all secured by **EigenCompute TEE** (Intel TDX).
 
-> 🔐 **Agent wallets run inside a Trusted Execution Environment.** Private keys are hardware-isolated — even the server operator cannot access them. [Verify attestation →](https://verify.eigencloud.xyz/app/0xfE82CD3c9C2702f3bB6b1617ABF2aABa8b343260)
+> 🔐 **Agent wallets run inside a Trusted Execution Environment.** Private keys are hardware-isolated — even the server operator cannot access them. [Verify attestation →](https://verify.eigencloud.xyz/app/0xE7caC048d1C305A5b870e147A080298eb1DE9877)
 
 ## Credential Storage
 
@@ -30,12 +30,12 @@ export EIGENPOLY_API_KEY="$(jq -r .apiKey ~/.eigenpoly/credentials.json)"
 
 ## Base URL & Auth
 
-- **Base URL**: `https://136.117.112.168:8000`
+- **Base URL**: `https://34.11.216.2:8000`
 - **Auth header**: `x-api-key: <EIGENPOLY_API_KEY>`
 - **Content-Type**: `application/json`
 
 ```bash
-export EIGENPOLY_API_URL="https://136.117.112.168:8000"
+export EIGENPOLY_API_URL="https://34.11.216.2:8000"
 export EIGENPOLY_API_KEY="$(jq -r .apiKey ~/.eigenpoly/credentials.json)"
 ```
 
@@ -253,7 +253,7 @@ curl -X POST "$EIGENPOLY_API_URL/deposit/quote" \
 ## Security & Trust
 
 - **TEE-isolated wallets** — private keys exist only inside Intel TDX enclave
-- **Verifiable build** — [verify the exact Docker image running](https://verify.eigencloud.xyz/app/0xfE82CD3c9C2702f3bB6b1617ABF2aABa8b343260)
+- **Verifiable build** — [verify the exact Docker image running](https://verify.eigencloud.xyz/app/0xE7caC048d1C305A5b870e147A080298eb1DE9877)
 - **HD derivation** — each agent gets a unique wallet from `m/44'/60'/0'/0/{index}`
 - **No key storage** — DB stores only the derivation index (an integer)
 - **API keys are SHA-256 hashed** — raw keys never persisted
