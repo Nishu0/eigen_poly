@@ -1,7 +1,8 @@
 """Trade route — real on-chain trade execution via split + CLOB sell.
 
-Signs transactions with the server wallet (POLYCLAW_PRIVATE_KEY),
-authenticated via the agent's API key. Records trades and positions in PostgreSQL.
+Signs transactions with TEE-derived per-agent wallet or falls back
+to server wallet (POLYCLAW_PRIVATE_KEY). Records trades and positions
+in PostgreSQL.
 """
 
 import uuid
@@ -54,13 +55,15 @@ class TradeResponse(BaseModel):
     clobFilled: bool
     positionId: Optional[str]
     error: Optional[str]
+    walletMode: str = "shared"
 
 
 @router.post("/trade", response_model=TradeResponse)
 async def execute_trade(req: TradeRequest, api_key: str = Depends(require_api_key)):
     """Execute a real on-chain trade: split USDC into YES+NO, sell unwanted via CLOB.
 
-    Signs transactions with the server wallet (POLYCLAW_PRIVATE_KEY).
+    In TEE mode: signs with the agent's own derived wallet (from MNEMONIC + HD path).
+    In fallback mode: signs with shared server wallet (POLYCLAW_PRIVATE_KEY).
     Requires a valid agent API key. Records trade + position in PostgreSQL.
     """
 
@@ -78,12 +81,19 @@ async def execute_trade(req: TradeRequest, api_key: str = Depends(require_api_ke
     if req.amountUsd <= 0:
         raise HTTPException(status_code=400, detail="amountUsd must be positive")
 
-    # 3. Initialize wallet from server env
-    wallet = WalletManager()
+    # 3. Initialize wallet — TEE per-agent key or shared fallback
+    wallet = WalletManager.from_tee(agent.wallet_index)
+    wallet_mode = "tee" if wallet.address and wallet.address.lower() == agent.wallet_address.lower() else "shared"
+
+    # If TEE wallet doesn't match (e.g. old agent registered before TEE), use shared
+    if not wallet.is_unlocked:
+        wallet = WalletManager()
+        wallet_mode = "shared"
+
     if not wallet.is_unlocked:
         raise HTTPException(
             status_code=503,
-            detail="Server wallet not configured. Set POLYCLAW_PRIVATE_KEY in .env",
+            detail="No wallet available. Set MNEMONIC (TEE) or POLYCLAW_PRIVATE_KEY in .env",
         )
 
     # 4. Pre-flight: check slippage against live market price
@@ -171,4 +181,5 @@ async def execute_trade(req: TradeRequest, api_key: str = Depends(require_api_ke
         clobFilled=result.clob_filled,
         positionId=position_id,
         error=result.error,
+        walletMode=wallet_mode,
     )

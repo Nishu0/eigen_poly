@@ -18,7 +18,7 @@ class WalletBalances:
 
 
 class WalletManager:
-    """Manages wallet from POLYCLAW_PRIVATE_KEY env var."""
+    """Manages wallet from POLYCLAW_PRIVATE_KEY env var or TEE mnemonic."""
 
     def __init__(self, rpc_url: Optional[str] = None):
         self.rpc_url = rpc_url or os.environ.get("CHAINSTACK_NODE", "")
@@ -35,6 +35,33 @@ class WalletManager:
             account = Account.from_key(private_key)
             self._private_key = private_key
             self._address = account.address
+
+    @classmethod
+    def from_tee(cls, wallet_index: int, rpc_url: Optional[str] = None) -> "WalletManager":
+        """Create a WalletManager from the TEE mnemonic for a specific agent.
+
+        Derives the agent's private key from MNEMONIC + HD path m/44'/60'/0'/0/{index}.
+        Falls back to POLYCLAW_PRIVATE_KEY if no MNEMONIC is available.
+        """
+        from lib.tee_wallet import derive_wallet, is_tee_mode
+
+        mgr = cls.__new__(cls)
+        mgr.rpc_url = rpc_url or os.environ.get("CHAINSTACK_NODE", "")
+        mgr._private_key = None
+        mgr._address = None
+
+        if is_tee_mode():
+            wallet = derive_wallet(wallet_index)
+            key = wallet.private_key
+            if not key.startswith("0x"):
+                key = "0x" + key
+            mgr._private_key = key
+            mgr._address = wallet.address
+        else:
+            # Fallback to shared server key for local dev
+            mgr._load_from_env()
+
+        return mgr
 
     @property
     def is_unlocked(self) -> bool:
@@ -59,8 +86,8 @@ class WalletManager:
         return self._private_key
 
     def lock(self) -> None:
-        """Clear private key from memory (no-op for env var mode)."""
-        pass  # Key stays in env var anyway
+        """Clear private key from memory."""
+        self._private_key = None
 
     def get_balances(self) -> WalletBalances:
         """Get POL and USDC.e balances."""

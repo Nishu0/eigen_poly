@@ -168,6 +168,57 @@ curl -X POST "$EIGENPOLY_API_URL/trade" \
 
 ---
 
+## Deposit & Funding
+
+> ⚠️ **USDC.e vs USDC**: Polymarket on Polygon uses **USDC.e** (`0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174`), NOT native USDC. If sending directly on Polygon, always use USDC.e.
+
+### Funding Methods
+
+1. **Direct transfer on Polygon** — Send USDC.e to your agent's wallet address
+2. **Cross-chain bridge** — Send from Ethereum, Arbitrum, Base, Solana, or Bitcoin
+
+### Deposit Routes
+
+| Route | Method | Auth | Description |
+|-------|--------|------|-------------|
+| `GET /deposit/supported-assets` | GET | none | List all supported chains/tokens |
+| `POST /deposit/address` | POST | `x-api-key` | Get deposit addresses (EVM/Solana/BTC) |
+| `POST /deposit/quote` | POST | none | Get bridge quote with fees |
+| `GET /deposit/info` | GET | none | Quick reference for funding |
+
+### Cross-chain deposit flow
+
+```bash
+# 1. Check supported assets
+curl "$EIGENPOLY_API_URL/deposit/supported-assets"
+
+# 2. Get deposit addresses for your agent
+curl -X POST "$EIGENPOLY_API_URL/deposit/address" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: $EIGENPOLY_API_KEY" \
+  -d '{"agentId": "my-agent-001"}'
+
+# Response:
+# {
+#   "depositAddresses": {
+#     "evm": "0x23566f...",   ← Send from Ethereum/Arbitrum/Base
+#     "svm": "CrvTBvz...",    ← Send from Solana
+#     "btc": "bc1q8ea..."     ← Send Bitcoin
+#   }
+# }
+
+# 3. Get a bridge quote (10 USDC from Ethereum)
+curl -X POST "$EIGENPOLY_API_URL/deposit/quote" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fromAmountBaseUnit": "10000000",
+    "fromChainId": "1",
+    "fromTokenAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+  }'
+```
+
+---
+
 ## Full Route Summary
 
 | Route | Method | Auth | Description |
@@ -178,6 +229,10 @@ curl -X POST "$EIGENPOLY_API_URL/trade" \
 | `/agents/{agent_id}/positions` | GET | `x-api-key` | Positions with live P&L |
 | `/agents/{agent_id}/trades` | GET | `x-api-key` | Trade history |
 | `/agents/{agent_id}/pnl` | GET | `x-api-key` | P&L summary |
+| `/deposit/supported-assets` | GET | none | Supported chains/tokens for deposit |
+| `/deposit/address` | POST | `x-api-key` | Cross-chain deposit addresses |
+| `/deposit/quote` | POST | none | Bridge quote with fees |
+| `/deposit/info` | GET | none | Funding quick reference |
 | `/markets/trending` | GET | none | Trending markets |
 | `/markets/search` | GET | none | Search markets |
 | `/markets/{market_id}` | GET | none | Market details |
@@ -188,11 +243,12 @@ curl -X POST "$EIGENPOLY_API_URL/trade" \
 ## Agent Trading Flow
 
 1. **Register** — `POST /register` → get API key + TEE-derived wallet
-2. **Search** — `GET /markets/search?q=bitcoin`
-3. **Analyze** — `GET /markets/analysis`
-4. **Bet** — `POST /trade` with marketId + side + amount
-5. **Monitor** — `GET /agents/{id}/positions` (live P&L)
-6. **Review** — `GET /agents/{id}/pnl`
+2. **Fund** — `POST /deposit/address` → get deposit addresses, send tokens
+3. **Search** — `GET /markets/search?q=bitcoin`
+4. **Analyze** — `GET /markets/analysis`
+5. **Bet** — `POST /trade` with marketId + side + amount
+6. **Monitor** — `GET /agents/{id}/positions` (live P&L)
+7. **Review** — `GET /agents/{id}/pnl`
 
 ## Security & Trust
 
@@ -202,3 +258,5 @@ curl -X POST "$EIGENPOLY_API_URL/trade" \
 - **No key storage** — DB stores only the derivation index (an integer)
 - **API keys are SHA-256 hashed** — raw keys never persisted
 - **EigenLayer backed** — cryptographic attestation proves code integrity
+- **USDC.e on Polygon** — safe uses bridged USDC (`0x2791...4174`)
+

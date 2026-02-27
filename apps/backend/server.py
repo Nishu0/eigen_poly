@@ -12,6 +12,7 @@ from routes.balance import router as balance_router
 from routes.trade import router as trade_router
 from routes.markets import router as markets_router
 from routes.agents import router as agents_router
+from routes.deposit import router as deposit_router
 
 
 @asynccontextmanager
@@ -44,6 +45,7 @@ app.include_router(balance_router, tags=["Balance"])
 app.include_router(trade_router, tags=["Trading"])
 app.include_router(markets_router, tags=["Markets"])
 app.include_router(agents_router, tags=["Agents"])
+app.include_router(deposit_router)
 
 
 @app.get("/health")
