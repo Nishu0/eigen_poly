@@ -1,20 +1,21 @@
 ---
 name: eigenpoly
-description: "Trade on Polymarket prediction markets. Browse markets, place bets, track positions with live P&L, manage balances. Polygon/Web3."
-metadata: {"openclaw":{"emoji":"🔮","homepage":"https://eigenpoly.com","primaryEnv":"EIGENPOLY_API_KEY","requires":{"env":["EIGENPOLY_API_KEY"]}}}
+description: "Trade on Polymarket prediction markets via TEE-secured wallets. Browse markets, place bets, track positions with live P&L. Powered by EigenCompute."
+metadata: {"openclaw":{"emoji":"🔮","homepage":"https://136.117.112.168:8000","primaryEnv":"EIGENPOLY_API_KEY","requires":{"env":["EIGENPOLY_API_KEY"]}}}
 ---
 
 # EigenPoly
 
-Polymarket prediction market trading skill. Browse markets, place bets (YES/NO), track positions with live P&L, and manage agent wallets.
+Polymarket prediction market trading skill. Browse markets, place bets (YES/NO), track positions with live P&L — all secured by **EigenCompute TEE** (Intel TDX).
 
-## Standard credential storage (required)
+> 🔐 **Agent wallets run inside a Trusted Execution Environment.** Private keys are hardware-isolated — even the server operator cannot access them. [Verify attestation →](https://verify.eigencloud.xyz/app/0xfE82CD3c9C2702f3bB6b1617ABF2aABa8b343260)
+
+## Credential Storage
 
 Store the API key in **one canonical location**:
 
 - `~/.eigenpoly/credentials.json`
 
-Recommended file contents:
 ```json
 {
   "apiKey": "epk_...",
@@ -22,20 +23,19 @@ Recommended file contents:
 }
 ```
 
-Optional environment export (runtime convenience):
+Environment export:
 ```bash
 export EIGENPOLY_API_KEY="$(jq -r .apiKey ~/.eigenpoly/credentials.json)"
 ```
 
 ## Base URL & Auth
 
-- Base URL: `https://backend-production-baaa.up.railway.app`
-- Auth header: `x-api-key: <EIGENPOLY_API_KEY>`
-- Content-Type: `application/json`
+- **Base URL**: `https://136.117.112.168:8000`
+- **Auth header**: `x-api-key: <EIGENPOLY_API_KEY>`
+- **Content-Type**: `application/json`
 
-Quick env setup:
 ```bash
-export EIGENPOLY_API_URL="https://backend-production-baaa.up.railway.app"
+export EIGENPOLY_API_URL="https://136.117.112.168:8000"
 export EIGENPOLY_API_KEY="$(jq -r .apiKey ~/.eigenpoly/credentials.json)"
 ```
 
@@ -43,7 +43,7 @@ export EIGENPOLY_API_KEY="$(jq -r .apiKey ~/.eigenpoly/credentials.json)"
 
 ### 1. Register your agent
 
-Just provide a name. The server generates a wallet for you and manages all signing.
+Just provide a name. The TEE generates a dedicated wallet for you.
 
 ```bash
 curl -X POST "$EIGENPOLY_API_URL/register" \
@@ -57,7 +57,8 @@ curl -X POST "$EIGENPOLY_API_URL/register" \
   "status": "registered",
   "agentId": "my-agent-001",
   "apiKey": "epk_a1b2c3...",
-  "walletAddress": "0xAuto...Generated",
+  "walletAddress": "0xTEE...Derived",
+  "walletMode": "tee",
   "credentialStore": "~/.eigenpoly/credentials.json"
 }
 ```
@@ -101,79 +102,16 @@ curl -X POST "$EIGENPOLY_API_URL/trade" \
 
 ### Market Routes (No Auth Required)
 
-#### `GET /markets/trending`
+| Route | Method | Description |
+|-------|--------|-------------|
+| `GET /markets/trending?limit=20` | GET | Trending markets by 24h volume |
+| `GET /markets/search?q={query}` | GET | Search markets by keyword |
+| `GET /markets/{market_id}` | GET | Full details for a single market |
+| `GET /markets/analysis?limit=10` | GET | Market analysis with opportunity signals |
 
-Fetch trending Polymarket markets by 24h volume.
+**Market response fields:** `id`, `question`, `slug`, `yes_price`, `no_price`, `volume`, `volume_24h`, `liquidity`, `end_date`, `active`, `closed`, `resolved`, `outcome`.
 
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `limit` | int | 20 | Number of markets (1–100) |
-
-```bash
-curl "$EIGENPOLY_API_URL/markets/trending?limit=5"
-```
-
----
-
-#### `GET /markets/search?q={query}`
-
-Search markets by keyword.
-
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `q` | string | Yes | Search query |
-| `limit` | int | No | Results limit (default 20) |
-
-```bash
-curl "$EIGENPOLY_API_URL/markets/search?q=election&limit=10"
-```
-
----
-
-#### `GET /markets/{market_id}`
-
-Get full details for a single market.
-
-```bash
-curl "$EIGENPOLY_API_URL/markets/558960"
-```
-
-**Response includes:** `id`, `question`, `slug`, `yes_price`, `no_price`, `volume`, `volume_24h`, `liquidity`, `end_date`, `active`, `closed`, `resolved`, `outcome`.
-
----
-
-#### `GET /markets/analysis`
-
-Aggregate market analysis with liquidity scores and opportunity signals.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `limit` | int | 10 | Number of markets (1–50) |
-
-**Response includes per market:** `liquidity_score` (HIGH/MEDIUM/LOW), `opportunity_signal` (STRONG/MODERATE/VOLUME_SPIKE/NEUTRAL), `spread`.
-
----
-
-### Balance Route (Auth Required)
-
-#### `GET /balance/{agent_id}`
-
-Fetch aggregate per-chain balances.
-
-```bash
-curl "$EIGENPOLY_API_URL/balance/my-agent-001" \
-  -H "x-api-key: $EIGENPOLY_API_KEY"
-```
-
-**Response:**
-```json
-{
-  "agentId": "my-agent-001",
-  "polygon": { "pol": 1.25, "usdc_e": 500.0 },
-  "solana": { "sol": 0.0, "vault_balance_usd": 0.0 },
-  "total_usd": 500.0
-}
-```
+**Analysis signals:** `liquidity_score` (HIGH/MEDIUM/LOW), `opportunity_signal` (STRONG/MODERATE/VOLUME_SPIKE/NEUTRAL), `spread`.
 
 ---
 
@@ -181,7 +119,7 @@ curl "$EIGENPOLY_API_URL/balance/my-agent-001" \
 
 #### `POST /trade`
 
-Place a bet on a Polymarket prediction market. Executes a real on-chain trade: splits USDC into YES+NO tokens, sells the unwanted side via CLOB. Server signs all transactions.
+Place a bet on Polymarket. The TEE signs the on-chain transaction — your private key never leaves the enclave.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -189,7 +127,7 @@ Place a bet on a Polymarket prediction market. Executes a real on-chain trade: s
 | `marketId` | string | Yes | Polymarket market ID |
 | `side` | string | Yes | `"YES"` or `"NO"` |
 | `amountUsd` | float | Yes | USD amount to bet |
-| `skipClobSell` | bool | No | Skip selling unwanted side (default false) |
+| `skipClobSell` | bool | No | Skip selling unwanted side |
 | `riskConfig.maxSlippage` | float | No | Max slippage (default 0.05) |
 
 ```bash
@@ -204,64 +142,18 @@ curl -X POST "$EIGENPOLY_API_URL/trade" \
   }'
 ```
 
-**Response:**
-```json
-{
-  "status": "executed",
-  "tradeId": "trd_abc123...",
-  "market": "Will X happen?",
-  "side": "YES",
-  "amountUsd": 10.0,
-  "entryPrice": 0.72,
-  "splitTx": "0x...",
-  "clobOrderId": "...",
-  "clobFilled": true,
-  "positionId": "uuid..."
-}
-```
-
 ---
 
 ### Agent Routes (Auth Required)
 
-#### `GET /agents/{agent_id}/positions`
+| Route | Method | Description |
+|-------|--------|-------------|
+| `GET /balance/{agent_id}` | GET | Per-chain balances (Polygon, Solana) |
+| `GET /agents/{agent_id}/positions` | GET | Open positions with **live P&L** |
+| `GET /agents/{agent_id}/trades?limit=50` | GET | Full trade history |
+| `GET /agents/{agent_id}/pnl` | GET | Aggregate P&L summary |
 
-Get all positions with live P&L calculated from current Polymarket prices.
-
-```bash
-curl "$EIGENPOLY_API_URL/agents/my-agent-001/positions" \
-  -H "x-api-key: $EIGENPOLY_API_KEY"
-```
-
-**Response includes per position:** `entry_price`, `current_price`, `pnl_usd`, `pnl_pct`, `status`.
-
----
-
-#### `GET /agents/{agent_id}/trades`
-
-Get full trade history.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `limit` | int | 50 | Max results (1–200) |
-
-```bash
-curl "$EIGENPOLY_API_URL/agents/my-agent-001/trades?limit=10" \
-  -H "x-api-key: $EIGENPOLY_API_KEY"
-```
-
----
-
-#### `GET /agents/{agent_id}/pnl`
-
-Get aggregate P&L summary.
-
-```bash
-curl "$EIGENPOLY_API_URL/agents/my-agent-001/pnl" \
-  -H "x-api-key: $EIGENPOLY_API_KEY"
-```
-
-**Response:**
+**P&L response:**
 ```json
 {
   "agentId": "my-agent-001",
@@ -276,11 +168,11 @@ curl "$EIGENPOLY_API_URL/agents/my-agent-001/pnl" \
 
 ---
 
-## Route Summary
+## Full Route Summary
 
 | Route | Method | Auth | Description |
 |-------|--------|------|-------------|
-| `/register` | POST | none | Register agent (just a name), get API key |
+| `/register` | POST | none | Register agent, get API key + TEE wallet |
 | `/balance/{agent_id}` | GET | `x-api-key` | Per-chain balances |
 | `/trade` | POST | `x-api-key` | Place a bet on Polymarket |
 | `/agents/{agent_id}/positions` | GET | `x-api-key` | Positions with live P&L |
@@ -295,17 +187,18 @@ curl "$EIGENPOLY_API_URL/agents/my-agent-001/pnl" \
 
 ## Agent Trading Flow
 
-1. **Register** — just pass your name: `POST /register`
-2. **Search** — find markets: `GET /markets/search?q=bitcoin`
-3. **Analyze** — check liquidity/signals: `GET /markets/analysis`
-4. **Bet** — place a trade: `POST /trade` with marketId + side + amount
-5. **Monitor** — check positions: `GET /agents/{id}/positions` (includes live P&L)
-6. **Review** — check overall performance: `GET /agents/{id}/pnl`
+1. **Register** — `POST /register` → get API key + TEE-derived wallet
+2. **Search** — `GET /markets/search?q=bitcoin`
+3. **Analyze** — `GET /markets/analysis`
+4. **Bet** — `POST /trade` with marketId + side + amount
+5. **Monitor** — `GET /agents/{id}/positions` (live P&L)
+6. **Review** — `GET /agents/{id}/pnl`
 
-## Security
+## Security & Trust
 
-- **Wallet keys are AES-encrypted** at rest — master key lives only in env vars, never in the DB
-- A database leak alone cannot expose wallet private keys
-- API keys are SHA-256 hashed before storage — raw keys never persisted
-- All trade/balance/position routes require valid `x-api-key` header
-- Server manages all wallet signing — agents never touch private keys
+- **TEE-isolated wallets** — private keys exist only inside Intel TDX enclave
+- **Verifiable build** — [verify the exact Docker image running](https://verify.eigencloud.xyz/app/0xfE82CD3c9C2702f3bB6b1617ABF2aABa8b343260)
+- **HD derivation** — each agent gets a unique wallet from `m/44'/60'/0'/0/{index}`
+- **No key storage** — DB stores only the derivation index (an integer)
+- **API keys are SHA-256 hashed** — raw keys never persisted
+- **EigenLayer backed** — cryptographic attestation proves code integrity
