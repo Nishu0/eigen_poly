@@ -17,6 +17,7 @@ dependencies = [
     "py-builder-relayer-client>=0.0.1",
     "py-builder-signing-sdk>=0.0.1",
     "mnemonic>=0.21",
+    "PyJWT>=2.8.0",
 ]
 
 [build-system]

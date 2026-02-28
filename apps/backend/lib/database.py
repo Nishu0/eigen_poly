@@ -10,6 +10,16 @@ _pool: asyncpg.Pool | None = None
 
 
 SCHEMA_SQL = """
+-- Users (Google OAuth accounts)
+CREATE TABLE IF NOT EXISTS users (
+    user_id TEXT PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    name TEXT DEFAULT '',
+    avatar_url TEXT DEFAULT '',
+    google_sub TEXT UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Registered agents
 CREATE TABLE IF NOT EXISTS agents (
     agent_id TEXT PRIMARY KEY,
@@ -19,6 +29,18 @@ CREATE TABLE IF NOT EXISTS agents (
     polygon_safe TEXT DEFAULT '',
     solana_vault TEXT DEFAULT '',
     scopes TEXT[] DEFAULT ARRAY['trade','balance','markets'],
+    owner_id TEXT REFERENCES users(user_id),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Device codes (agent claim flow)
+CREATE TABLE IF NOT EXISTS device_codes (
+    device_code TEXT PRIMARY KEY,
+    user_code TEXT UNIQUE NOT NULL,
+    agent_id TEXT REFERENCES agents(agent_id),
+    status TEXT DEFAULT 'pending',
+    user_id TEXT REFERENCES users(user_id),
+    expires_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -57,14 +79,17 @@ CREATE TABLE IF NOT EXISTS positions (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Indexes for fast lookups
+-- Indexes
 CREATE INDEX IF NOT EXISTS idx_agents_api_key_hash ON agents(api_key_hash);
 CREATE INDEX IF NOT EXISTS idx_agents_wallet ON agents(wallet_address);
+CREATE INDEX IF NOT EXISTS idx_agents_owner ON agents(owner_id);
 CREATE INDEX IF NOT EXISTS idx_trades_agent ON trades(agent_id);
 CREATE INDEX IF NOT EXISTS idx_trades_market ON trades(market_id);
 CREATE INDEX IF NOT EXISTS idx_positions_agent ON positions(agent_id);
 CREATE INDEX IF NOT EXISTS idx_positions_market ON positions(market_id);
 CREATE INDEX IF NOT EXISTS idx_positions_status ON positions(status);
+CREATE INDEX IF NOT EXISTS idx_device_codes_user_code ON device_codes(user_code);
+CREATE INDEX IF NOT EXISTS idx_device_codes_agent ON device_codes(agent_id);
 """
 
 

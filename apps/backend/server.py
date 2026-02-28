@@ -13,6 +13,9 @@ from routes.trade import router as trade_router
 from routes.markets import router as markets_router
 from routes.agents import router as agents_router
 from routes.deposit import router as deposit_router
+from routes.export_key import router as export_key_router
+from routes.oauth import router as oauth_router
+from routes.device import router as device_router
 
 
 @asynccontextmanager
@@ -25,12 +28,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="EigenPoly Backend",
-    version="0.1.0",
-    description="Multi-agent trading backend for Polymarket + Solana DeFi",
+    version="0.2.0",
+    description="Multi-agent trading backend for Polymarket — TEE-secured with Google OAuth",
     lifespan=lifespan,
 )
 
-# CORS — allow frontend dev server
+# CORS — allow frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -46,8 +49,11 @@ app.include_router(trade_router, tags=["Trading"])
 app.include_router(markets_router, tags=["Markets"])
 app.include_router(agents_router, tags=["Agents"])
 app.include_router(deposit_router)
+app.include_router(export_key_router, tags=["Wallet"])
+app.include_router(oauth_router)
+app.include_router(device_router)
 
 
 @app.get("/health")
 def health() -> dict:
-    return {"ok": True, "service": "eigenpoly-backend", "port": 8000}
+    return {"ok": True, "service": "eigenpoly-backend", "version": "0.2.0"}

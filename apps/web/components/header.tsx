@@ -33,7 +33,13 @@ export function Header() {
         </div>
 
         {/* CTA */}
-        <div className="hidden items-center gap-6 md:flex">
+        <div className="hidden items-center gap-3 md:flex">
+          <Link
+            href="/dashboard"
+            className="rounded-full border border-foreground/20 px-4 py-2 text-sm font-medium text-foreground transition-all hover:bg-foreground hover:text-background"
+          >
+            Dashboard
+          </Link>
           <Link
             href="/skills.md"
             className="rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-all hover:opacity-80"

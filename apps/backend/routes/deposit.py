@@ -10,9 +10,12 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
+import os
 
+from web3 import Web3
 from lib.auth import require_api_key, hash_api_key
 from lib.agent_store import AgentStore
+from lib.contracts import CONTRACTS, PROXY_WALLET_ABI
 
 router = APIRouter(prefix="/deposit", tags=["deposit"])
 store = AgentStore()
@@ -22,6 +25,27 @@ BRIDGE_BASE = "https://bridge.polymarket.com"
 # USDC.e on Polygon — this is what Polymarket Safe uses, NOT native USDC
 USDC_E_POLYGON = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
 USDC_NATIVE_POLYGON = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+
+
+# --- Helpers ---
+
+
+def _get_safe_address(eoa_address: str) -> str:
+    """Compute Polymarket Safe address from EOA on-chain."""
+    rpc_url = os.environ.get("CHAINSTACK_NODE", "")
+    if not rpc_url:
+        return eoa_address
+    try:
+        w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={"timeout": 15, "proxies": {}}))
+        exchange = w3.eth.contract(
+            address=Web3.to_checksum_address(CONTRACTS["CTF_EXCHANGE"]),
+            abi=PROXY_WALLET_ABI,
+        )
+        return exchange.functions.getPolyProxyWalletAddress(
+            Web3.to_checksum_address(eoa_address)
+        ).call()
+    except Exception:
+        return eoa_address
 
 
 # --- Models ---
@@ -75,15 +99,14 @@ async def create_deposit_address(
     req: DepositAddressRequest,
     api_key: str = Depends(require_api_key),
 ):
-    """Create cross-chain deposit addresses for an agent's wallet.
+    """Create cross-chain deposit addresses for an agent's Safe wallet.
 
     Returns deposit addresses for:
     - **EVM** (Ethereum, Polygon, Arbitrum, Base, etc.)
     - **Solana** (SVM)
     - **Bitcoin** (BTC)
 
-    Send supported tokens to these addresses — they'll be automatically
-    bridged and converted to USDC.e on Polygon in the agent's wallet.
+    Funds are bridged directly to the agent's Polymarket Safe wallet (not the EOA).
     """
     # Verify ownership
     key_hash = hash_api_key(api_key)
@@ -91,11 +114,14 @@ async def create_deposit_address(
     if not agent or agent.agent_id != req.agentId:
         raise HTTPException(status_code=403, detail="API key does not match agent")
 
-    # Call Polymarket Bridge API
+    # Get the Safe address — bridge funds go HERE, not the EOA
+    safe_address = _get_safe_address(agent.wallet_address)
+
+    # Call Polymarket Bridge API with the Safe address
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(
             f"{BRIDGE_BASE}/deposit",
-            json={"address": agent.wallet_address},
+            json={"address": safe_address},
         )
         if resp.status_code not in (200, 201):
             raise HTTPException(
@@ -106,10 +132,11 @@ async def create_deposit_address(
 
     return {
         "agentId": req.agentId,
-        "walletAddress": agent.wallet_address,
+        "eoaAddress": agent.wallet_address,
+        "safeAddress": safe_address,
         "depositAddresses": data.get("address", {}),
-        "note": data.get("note", "Only certain chains and tokens are supported. See /deposit/supported-assets."),
-        "_tip": "Send supported tokens to these addresses. They'll be bridged to USDC.e on Polygon automatically.",
+        "note": "Funds will be bridged to USDC.e on your Polymarket Safe wallet.",
+        "_tip": f"Bridge deposits go to your Safe ({safe_address}), not your EOA.",
     }
 
 
