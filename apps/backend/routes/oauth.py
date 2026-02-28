@@ -40,10 +40,11 @@ COOKIE_NAME = "eigenpoly_session"
 COOKIE_MAX_AGE = 7 * 24 * 3600  # 7 days
 
 
-def _get_redirect_uri() -> str:
-    """Get the OAuth redirect URI."""
-    backend = BACKEND_URL or f"{FRONTEND_URL}"
-    return f"{backend}/oauth/google/callback"
+def _get_redirect_uri(request: Request) -> str:
+    """Build the OAuth redirect URI dynamically from the incoming request."""
+    # Use the request's own URL to build the callback — works with any IP/domain
+    base = str(request.base_url).rstrip("/")
+    return f"{base}/oauth/google/callback"
 
 
 def _create_session_token(user_id: str, email: str, name: str) -> str:
@@ -80,12 +81,11 @@ async def google_login(request: Request, redirect: str = ""):
     if not GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=503, detail="Google OAuth not configured")
 
-    # Store intended redirect in a state param
     state = redirect or "/dashboard"
 
     params = {
         "client_id": GOOGLE_CLIENT_ID,
-        "redirect_uri": _get_redirect_uri(),
+        "redirect_uri": _get_redirect_uri(request),
         "response_type": "code",
         "scope": "openid email profile",
         "access_type": "offline",
@@ -109,7 +109,7 @@ async def google_callback(request: Request, code: str = "", state: str = "/dashb
                 "code": code,
                 "client_id": GOOGLE_CLIENT_ID,
                 "client_secret": GOOGLE_CLIENT_SECRET,
-                "redirect_uri": _get_redirect_uri(),
+                "redirect_uri": _get_redirect_uri(request),
                 "grant_type": "authorization_code",
             },
         )
