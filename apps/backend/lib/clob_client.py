@@ -150,6 +150,38 @@ class ClobClientWrapper:
 
         return None, False, error_msg
 
+    def buy_market(
+        self,
+        token_id: str,
+        amount: float,
+    ) -> tuple[Optional[str], Optional[str]]:
+        """
+        Place a market buy order using MarketOrderArgs (recommended by Polymarket).
+
+        Args:
+            token_id: Token ID to buy
+            amount: Dollar amount to spend
+
+        Returns:
+            Tuple of (order_id, error_message)
+        """
+        try:
+            from py_clob_client.clob_types import MarketOrderArgs, OrderType
+            from py_clob_client.order_builder.constants import BUY
+
+            mo = MarketOrderArgs(
+                token_id=token_id,
+                amount=amount,
+                side=BUY,
+            )
+            signed = self.client.create_market_order(mo)
+            result = self.client.post_order(signed, OrderType.FOK)
+            order_id = result.get("orderID", str(result)[:40])
+            return order_id, None
+
+        except Exception as e:
+            return None, str(e)
+
     def buy_gtc(
         self,
         token_id: str,
@@ -157,7 +189,7 @@ class ClobClientWrapper:
         price: float,
     ) -> tuple[Optional[str], Optional[str]]:
         """
-        Place GTC (Good Till Cancelled) buy order.
+        Place GTC (Good Till Cancelled) limit buy order.
 
         Args:
             token_id: Token ID to buy

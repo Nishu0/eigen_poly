@@ -124,11 +124,13 @@ async def register_agent(req: RegisterRequest):
         expiresIn=device["expiresIn"],
         fundingInfo={
             "polygon_usdc_e": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
-            "warning": "Send USDC.e (bridged USDC) on Polygon, NOT native USDC",
-            "send_to": safe_address or wallet_address,
+            "warning": "Send USDC.e (bridged USDC) on Polygon to the EOA address",
+            "send_to": wallet_address,
+            "safe_wallet": safe_address,
+            "note": "CLOB trading uses EOA balance. Send funds to EOA, not Safe.",
             "deposit_supported_assets": "GET /deposit/supported-assets",
             "deposit_address": "POST /deposit/address",
-            "min_deposit_usd": 45,
+            "min_deposit_usd": 1,
         },
         nextSteps=[
             "1. Store your apiKey — it is shown only once",
