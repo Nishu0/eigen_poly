@@ -15,7 +15,7 @@ from eth_account import Account
 from lib.auth import generate_api_key, hash_api_key
 from lib.agent_store import AgentStore
 from lib.tee_wallet import derive_address, is_tee_mode
-from lib.contracts import CONTRACTS, PROXY_WALLET_ABI
+from lib.contracts import derive_polymarket_safe
 from routes.device import create_device_code
 
 
@@ -47,20 +47,9 @@ class RegisterResponse(BaseModel):
 
 
 def _get_safe_address(eoa_address: str) -> str:
-    """Compute Polymarket proxy/Safe wallet address for an EOA."""
-    rpc_url = os.environ.get("CHAINSTACK_NODE", "")
-    if not rpc_url:
-        return ""
+    """Derive Polymarket Safe address using CREATE2 (no RPC needed)."""
     try:
-        w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={"timeout": 15, "proxies": {}}))
-        exchange = w3.eth.contract(
-            address=Web3.to_checksum_address(CONTRACTS["CTF_EXCHANGE"]),
-            abi=PROXY_WALLET_ABI,
-        )
-        safe_addr = exchange.functions.getPolyProxyWalletAddress(
-            Web3.to_checksum_address(eoa_address)
-        ).call()
-        return safe_addr
+        return derive_polymarket_safe(eoa_address)
     except Exception as e:
         print(f"Warning: could not derive Safe address: {e}")
         return ""

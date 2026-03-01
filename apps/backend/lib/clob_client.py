@@ -17,9 +17,10 @@ CLOB_MAX_RETRIES = int(os.environ.get("CLOB_MAX_RETRIES", "5"))
 class ClobClientWrapper:
     """Wrapper around py-clob-client for trading."""
 
-    def __init__(self, private_key: str, address: str):
+    def __init__(self, private_key: str, address: str, safe_address: str = None):
         self.private_key = private_key
         self.address = address
+        self.safe_address = safe_address or address  # Safe as funder, EOA as signer
         self._client = None
         self._creds = None
 
@@ -57,13 +58,13 @@ class ClobClientWrapper:
                 http2=True, proxy=proxy, timeout=30.0
             )
 
-        # Initialize client
+        # Initialize client — EOA signs, Safe holds funds
         self._client = ClobClient(
             "https://clob.polymarket.com",
             key=self.private_key,
             chain_id=137,
-            signature_type=0,
-            funder=self.address,
+            signature_type=0,  # EOA signature
+            funder=self.safe_address,  # Safe wallet holds the funds
         )
 
         # Set up API credentials

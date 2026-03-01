@@ -7,7 +7,7 @@ from web3 import Web3
 
 from lib.auth import require_api_key, hash_api_key
 from lib.agent_store import AgentStore
-from lib.contracts import CONTRACTS, PROXY_WALLET_ABI, ERC20_ABI
+from lib.contracts import CONTRACTS, ERC20_ABI, derive_polymarket_safe
 
 
 router = APIRouter()
@@ -48,17 +48,10 @@ def _get_balances(rpc_url: str, address: str) -> WalletBalance:
         return WalletBalance(address=address, pol=0.0, usdc_e=0.0)
 
 
-def _get_safe_address(rpc_url: str, eoa_address: str) -> str:
-    """Compute Polymarket Safe address from EOA."""
+def _get_safe_address(eoa_address: str) -> str:
+    """Derive Polymarket Safe address using CREATE2 (no RPC needed)."""
     try:
-        w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={"timeout": 15, "proxies": {}}))
-        exchange = w3.eth.contract(
-            address=Web3.to_checksum_address(CONTRACTS["CTF_EXCHANGE"]),
-            abi=PROXY_WALLET_ABI,
-        )
-        return exchange.functions.getPolyProxyWalletAddress(
-            Web3.to_checksum_address(eoa_address)
-        ).call()
+        return derive_polymarket_safe(eoa_address)
     except Exception:
         return ""
 
@@ -86,7 +79,7 @@ async def get_balance(agent_id: str, api_key: str = Depends(require_api_key)):
     eoa = _get_balances(rpc_url, agent.wallet_address)
 
     # Get Safe address and balances
-    safe_addr = _get_safe_address(rpc_url, agent.wallet_address)
+    safe_addr = _get_safe_address(agent.wallet_address)
     safe = _get_balances(rpc_url, safe_addr) if safe_addr else WalletBalance(address="", pol=0.0, usdc_e=0.0)
 
     total_usdc = eoa.usdc_e + safe.usdc_e

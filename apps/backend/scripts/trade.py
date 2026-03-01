@@ -24,7 +24,7 @@ from web3 import Web3
 from lib.wallet_manager import WalletManager
 from lib.gamma_client import GammaClient, Market
 from lib.clob_client import ClobClientWrapper
-from lib.contracts import CONTRACTS, CTF_ABI, POLYGON_CHAIN_ID
+from lib.contracts import CONTRACTS, CTF_ABI, POLYGON_CHAIN_ID, derive_polymarket_safe
 from lib.position_storage import PositionStorage, PositionEntry
 
 
@@ -222,9 +222,11 @@ class TradeExecutor:
         if not skip_clob_sell and unwanted_token:
             print("Selling unwanted tokens via CLOB...")
             try:
+                safe_address = derive_polymarket_safe(self.wallet.address)
                 clob = ClobClientWrapper(
                     self.wallet.get_unlocked_key(),
                     self.wallet.address,
+                    safe_address=safe_address,
                 )
                 clob_order_id, clob_filled, clob_error = clob.sell_fok(
                     unwanted_token,

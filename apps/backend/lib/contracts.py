@@ -1,5 +1,8 @@
 """Polymarket contract addresses and ABIs (Polygon Mainnet)."""
 
+from py_builder_relayer_client.builder.derive import derive
+from py_builder_relayer_client.config import get_contract_config as get_relayer_config
+
 CONTRACTS = {
     "USDC_E": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
     "CTF": "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045",
@@ -13,7 +16,18 @@ CONTRACTS = {
 # Polygon chain ID
 POLYGON_CHAIN_ID = 137
 
-# ABI for getting proxy wallet address from CTF Exchange
+
+def derive_polymarket_safe(eoa_address: str) -> str:
+    """Derive the Polymarket Safe address for an EOA using CREATE2.
+
+    Uses the same derivation as Polymarket's website/py-builder-relayer-client.
+    This is a pure computation — no RPC call needed.
+    """
+    relayer_config = get_relayer_config(POLYGON_CHAIN_ID)
+    return derive(eoa_address, relayer_config.safe_factory)
+
+
+# Legacy ABI for on-chain proxy wallet lookup (kept for backward compatibility)
 PROXY_WALLET_ABI = [
     {
         "constant": True,
