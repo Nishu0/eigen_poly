@@ -2,17 +2,9 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# Install system deps for asyncpg, web3, cryptography + Caddy
+# Install system deps for asyncpg, web3, cryptography
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
-    curl \
-    debian-keyring \
-    debian-archive-keyring \
-    apt-transport-https \
-    && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg \
-    && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list \
-    && apt-get update \
-    && apt-get install -y caddy \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy backend code
@@ -21,11 +13,8 @@ COPY . .
 # Install Python deps
 RUN pip install --no-cache-dir -e .
 
-EXPOSE 443 80 8000
+EXPOSE 8000
 
-# Copy Caddyfile
-COPY Caddyfile /etc/caddy/Caddyfile
-
-# Start script: run Caddy (TLS proxy) + Python backend
-CMD caddy start --config /etc/caddy/Caddyfile && \
-    python -m uvicorn server:app --host 0.0.0.0 --port ${APP_PORT:-8000}
+# MNEMONIC is auto-injected by EigenCompute TEE KMS
+# DATABASE_URL and CHAINSTACK_NODE are set in EigenCloud dashboard
+CMD python -m uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000}
