@@ -61,12 +61,28 @@ class TradeExecutor:
             )
         )
 
+    def _ensure_approvals(self):
+        """Check and set Polymarket contract approvals if needed."""
+        if not self.wallet.check_approvals():
+            print("Setting Polymarket contract approvals...")
+            try:
+                tx_hashes = self.wallet.set_approvals()
+                print(f"Approvals set: {len(tx_hashes)} transactions")
+                for h in tx_hashes:
+                    print(f"  tx: {h}")
+            except Exception as e:
+                print(f"Warning: approval failed: {e}")
+                raise ValueError(f"Failed to set approvals: {e}")
+
     def _split_position(
         self,
         condition_id: str,
         amount_usd: float,
     ) -> str:
         """Split USDC into YES + NO tokens. Returns tx hash."""
+        # Ensure approvals are set before splitting
+        self._ensure_approvals()
+
         w3 = self._get_web3()
         address = Web3.to_checksum_address(self.wallet.address)
         account = w3.eth.account.from_key(self.wallet.get_unlocked_key())
