@@ -1,0 +1,42 @@
+# Caddy reverse proxy — TLS termination for api.eigenpoly.xyz
+# Caddy handles HTTPS, proxies to the Python backend on APP_PORT
+
+{$DOMAIN:api.eigenpoly.xyz} {
+    # TLS — use EigenCompute-provided certs
+    tls /run/tls/fullchain.pem /run/tls/privkey.pem
+
+    # Proxy all requests to the Python backend
+    reverse_proxy localhost:{$APP_PORT:8000} {
+        health_uri /health
+        health_interval 30s
+        health_timeout 5s
+        health_status 200
+    }
+
+    # CORS headers (needed for frontend on different domain)
+    header {
+        Access-Control-Allow-Origin "https://www.eigenpoly.xyz"
+        Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+        Access-Control-Allow-Headers "Content-Type, x-api-key, Authorization"
+        Access-Control-Allow-Credentials "true"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        -Server
+    }
+
+    log {
+        output stdout
+        format console
+        level INFO
+    }
+}
+
+# HTTP — redirect to HTTPS + healthcheck
+:80 {
+    @for_domain expression {host} != "localhost"
+    redir @for_domain https://{host}{uri} permanent
+
+    handle /health {
+        respond "OK" 200
+    }
+}
