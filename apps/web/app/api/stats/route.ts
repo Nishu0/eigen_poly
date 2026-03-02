@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const BACKEND_URL = process.env.EIGENPOLY_API_URL || "https://api.eigenpoly.xyz";
+const BACKEND_URL = process.env.EIGENPOLY_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export const revalidate = 60; // revalidate every 60 seconds
 

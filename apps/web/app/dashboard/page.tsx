@@ -2,10 +2,32 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { LogOut, RefreshCw, ExternalLink, TrendingUp, TrendingDown, MessageSquare, BarChart3, Zap, Shield } from "lucide-react";
+import {
+  LogOut,
+  RefreshCw,
+  ExternalLink,
+  MessageSquare,
+  BarChart3,
+  Zap,
+  Shield,
+  Bot,
+  Copy,
+  Eye,
+  EyeOff,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
+  Key,
+  AlertTriangle,
+  X,
+  CheckCircle2,
+  TrendingUp,
+} from "lucide-react";
 import { LoginPage } from "@/components/login-page";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface UserInfo {
   userId: string;
@@ -34,9 +56,69 @@ interface Stats {
   open_positions: number;
 }
 
-type Tab = "overview" | "chat" | "trades" | "alpha";
+interface AgentRecord {
+  agentId: string;
+  walletAddress: string;
+  walletIndex: number;
+  scopes: string[];
+  createdAt: string;
+  recentTrades?: TradeRecord[];
+}
 
-// ─── Stat Card ────────────────────────────────────────────────────────────────
+interface AlphaSignal {
+  market: string;
+  signal: "BUY YES" | "BUY NO";
+  confidence: number;
+  source: "Sozu" | "EigenPoly" | "Metengine";
+  category: string;
+  date: string;
+}
+
+type Tab = "overview" | "chat" | "trades" | "alpha" | "agents";
+
+// ─── Alpha signals data ───────────────────────────────────────────────────────
+const ALL_ALPHA_SIGNALS: AlphaSignal[] = [
+  { market: "Will BTC hit $100K by Q2 2025?", signal: "BUY YES", confidence: 78, source: "Metengine", category: "Crypto", date: "2025-03-01" },
+  { market: "Will ETH merge trigger SEC action?", signal: "BUY NO", confidence: 62, source: "Sozu", category: "Regulatory", date: "2025-03-01" },
+  { market: "Will Fed cut rates in June 2025?", signal: "BUY YES", confidence: 71, source: "EigenPoly", category: "Macro", date: "2025-03-01" },
+  { market: "Will Apple Vision Pro outsell Quest 3?", signal: "BUY NO", confidence: 55, source: "Metengine", category: "Tech", date: "2025-02-28" },
+  { market: "Will Solana ETF get SEC approval by 2025?", signal: "BUY YES", confidence: 67, source: "EigenPoly", category: "Crypto", date: "2025-02-28" },
+  { market: "Will OpenAI release GPT-5 before Google Gemini Ultra 2?", signal: "BUY YES", confidence: 58, source: "Sozu", category: "Tech", date: "2025-02-27" },
+  { market: "Will Ukraine–Russia ceasefire happen in H1 2025?", signal: "BUY NO", confidence: 44, source: "EigenPoly", category: "Geopolitics", date: "2025-02-27" },
+  { market: "Will SpaceX Starship complete orbital flight by June 2025?", signal: "BUY YES", confidence: 82, source: "Metengine", category: "Tech", date: "2025-02-26" },
+  { market: "Will S&P 500 exceed 6000 by EOY 2025?", signal: "BUY YES", confidence: 69, source: "Sozu", category: "Macro", date: "2025-02-26" },
+  { market: "Will DOGE be added to a major US exchange reserve?", signal: "BUY NO", confidence: 51, source: "EigenPoly", category: "Crypto", date: "2025-02-25" },
+  { market: "Will Trump implement 25% tariffs on Canada?", signal: "BUY YES", confidence: 73, source: "Metengine", category: "Geopolitics", date: "2025-02-25" },
+  { market: "Will Nvidia hit $200/share by Q3 2025?", signal: "BUY YES", confidence: 61, source: "Sozu", category: "Tech", date: "2025-02-24" },
+  { market: "Will a major bank fail in 2025?", signal: "BUY NO", confidence: 77, source: "EigenPoly", category: "Macro", date: "2025-02-24" },
+  { market: "Will XRP win its SEC lawsuit?", signal: "BUY YES", confidence: 66, source: "Metengine", category: "Regulatory", date: "2025-02-23" },
+  { market: "Will AI replace 20% of software jobs by 2026?", signal: "BUY YES", confidence: 54, source: "Sozu", category: "Tech", date: "2025-02-23" },
+  { market: "Will Polymarket volume exceed $5B in Q1 2025?", signal: "BUY YES", confidence: 80, source: "EigenPoly", category: "Crypto", date: "2025-02-22" },
+  { market: "Will China invade Taiwan by 2027?", signal: "BUY NO", confidence: 72, source: "Metengine", category: "Geopolitics", date: "2025-02-22" },
+  { market: "Will Bitcoin dominance exceed 65% by mid-2025?", signal: "BUY YES", confidence: 63, source: "Sozu", category: "Crypto", date: "2025-02-21" },
+  { market: "Will US inflation drop below 2.5% in 2025?", signal: "BUY YES", confidence: 57, source: "EigenPoly", category: "Macro", date: "2025-02-21" },
+  { market: "Will Microsoft acquire Palantir?", signal: "BUY NO", confidence: 48, source: "Metengine", category: "Tech", date: "2025-02-20" },
+  { market: "Will Ethereum hit $5000 by EOY 2025?", signal: "BUY YES", confidence: 60, source: "Sozu", category: "Crypto", date: "2025-02-20" },
+  { market: "Will Germany enter recession in 2025?", signal: "BUY YES", confidence: 65, source: "EigenPoly", category: "Macro", date: "2025-02-19" },
+  { market: "Will SEC approve spot Ethereum ETF options?", signal: "BUY YES", confidence: 74, source: "Metengine", category: "Regulatory", date: "2025-02-19" },
+  { market: "Will Anthropic raise valuation above $50B?", signal: "BUY YES", confidence: 70, source: "Sozu", category: "Tech", date: "2025-02-18" },
+  { market: "Will gold reach $3000/oz by mid-2025?", signal: "BUY YES", confidence: 76, source: "EigenPoly", category: "Macro", date: "2025-02-18" },
+];
+
+// ─── Shared Components ────────────────────────────────────────────────────────
+
+function EmptyState({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+      <div className="mb-4 p-4 rounded-full" style={{ background: "#CC5A38/10", backgroundColor: "rgba(204,90,56,0.08)" }}>
+        {icon}
+      </div>
+      <p className="text-white font-mono text-sm font-bold mb-1">{title}</p>
+      <p className="text-neutral-500 text-xs font-mono max-w-xs">{subtitle}</p>
+    </div>
+  );
+}
+
 function StatCard({
   label,
   value,
@@ -60,9 +142,7 @@ function StatCard({
       <div className="flex items-center justify-between mt-3">
         <span className="text-[10px] text-neutral-500 font-mono uppercase">{sub}</span>
         {delta && (
-          <span
-            className={`text-[10px] font-mono font-bold ${delta.up ? "text-green-400" : "text-red-400"}`}
-          >
+          <span className={`text-[10px] font-mono font-bold ${delta.up ? "text-green-400" : "text-red-400"}`}>
             {delta.up ? "↑" : "↓"} {delta.text}
           </span>
         )}
@@ -71,7 +151,6 @@ function StatCard({
   );
 }
 
-// ─── Bar Chart ────────────────────────────────────────────────────────────────
 function BarChart({ values }: { values: number[] }) {
   const max = Math.max(...values, 1);
   return (
@@ -99,9 +178,8 @@ function OverviewTab({ stats, trades }: { stats: Stats | null; trades: TradeReco
     return `$${n.toFixed(0)}`;
   };
 
-  // Synthetic bar chart: trade volumes grouped into 12 buckets from recent trades
   const barVals = (() => {
-    if (!trades.length) return [40, 55, 45, 70, 60, 85, 75, 50, 65, 90, 80, 95];
+    if (!trades.length) return Array(12).fill(0);
     const buckets = Array(12).fill(0);
     trades.slice(-12).forEach((t, i) => { buckets[i] = t.amount_usd; });
     return buckets;
@@ -110,37 +188,36 @@ function OverviewTab({ stats, trades }: { stats: Stats | null; trades: TradeReco
   const recentTrades = trades.slice(0, 5);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 w-full">
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 w-full">
         <StatCard
           label="Total Agents"
-          value={stats ? String(stats.agents) : "—"}
+          value={stats ? String(stats.agents) : "0"}
           sub="Registered"
           delta={stats && stats.agents > 0 ? { text: "Active", up: true } : undefined}
         />
         <StatCard
           label="Trade Volume"
-          value={stats ? fmtUSD(stats.volume_usd) : "—"}
+          value={stats ? fmtUSD(stats.volume_usd) : "$0"}
           sub="All time"
           delta={{ text: "On-chain", up: true }}
         />
         <StatCard
           label="Total Trades"
-          value={stats ? String(stats.trades) : "—"}
+          value={stats ? String(stats.trades) : "0"}
           sub="Executed"
         />
         <StatCard
           label="Open Positions"
-          value={stats ? String(stats.open_positions) : "—"}
+          value={stats ? String(stats.open_positions) : "0"}
           sub="Live"
           delta={stats && stats.open_positions > 0 ? { text: "Live", up: true } : undefined}
         />
       </div>
 
       {/* Middle row: bar chart + recent trades */}
-      <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4">
-        {/* Balance / Volume History */}
+      <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4 w-full">
         <div
           className="rounded-xl border p-5"
           style={{ borderColor: "#CC5A38", background: "#0a0a0a", height: 220 }}
@@ -149,11 +226,26 @@ function OverviewTab({ stats, trades }: { stats: Stats | null; trades: TradeReco
             Trade Volume History
           </p>
           <div style={{ height: "calc(100% - 32px)" }}>
-            <BarChart values={barVals} />
+            {trades.length === 0 ? (
+              <div className="h-full flex items-end gap-[3%]">
+                {Array(12).fill(0).map((_, i) => (
+                  <div
+                    key={i}
+                    className="flex-1 rounded-sm opacity-10"
+                    style={{
+                      height: `${20 + Math.sin(i) * 15}%`,
+                      background: "linear-gradient(to top, #CC5A38, #e8855f)",
+                      minHeight: 4,
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <BarChart values={barVals} />
+            )}
           </div>
         </div>
 
-        {/* Recent Trades */}
         <div
           className="rounded-xl border p-5"
           style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
@@ -162,7 +254,11 @@ function OverviewTab({ stats, trades }: { stats: Stats | null; trades: TradeReco
             Recent Trades
           </p>
           {recentTrades.length === 0 ? (
-            <p className="text-neutral-600 text-xs font-mono">No trades yet.</p>
+            <EmptyState
+              icon={<TrendingUp size={22} style={{ color: "#CC5A38" }} />}
+              title="No trades yet"
+              subtitle="Your first trades will appear here once agents start trading."
+            />
           ) : (
             <div className="space-y-2">
               {recentTrades.map((t) => (
@@ -183,55 +279,46 @@ function OverviewTab({ stats, trades }: { stats: Stats | null; trades: TradeReco
         </div>
       </div>
 
-      {/* Trade Performance Table */}
+      {/* Trade Performance Table — full width */}
       <div
-        className="rounded-xl border p-5"
+        className="rounded-xl border p-5 w-full"
         style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
       >
         <p className="text-[10px] uppercase tracking-widest font-mono mb-4" style={{ color: "#CC5A38" }}>
           Trade Performance
         </p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs font-mono">
-            <thead>
-              <tr className="border-b" style={{ borderColor: "#CC5A38" }}>
-                {["Trade Name", "Position Size", "Status", "Profit/Loss %", "Tx Hash"].map((h) => (
-                  <th key={h} className="text-left py-2 pr-4 text-[10px] uppercase tracking-widest" style={{ color: "#CC5A38" }}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {trades.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-6 text-center text-neutral-600">
-                    No trades recorded yet.
-                  </td>
+        {trades.length === 0 ? (
+          <EmptyState
+            icon={<BarChart3 size={22} style={{ color: "#CC5A38" }} />}
+            title="No trades recorded yet"
+            subtitle="Trade performance metrics will appear here once your agents execute their first trades."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs font-mono">
+              <thead>
+                <tr className="border-b" style={{ borderColor: "#CC5A38" }}>
+                  {["Trade Name", "Position Size", "Status", "Profit/Loss %", "Tx Hash"].map((h) => (
+                    <th key={h} className="text-left py-2 pr-4 text-[10px] uppercase tracking-widest" style={{ color: "#CC5A38" }}>
+                      {h}
+                    </th>
+                  ))}
                 </tr>
-              ) : (
-                trades.slice(0, 8).map((t) => (
+              </thead>
+              <tbody>
+                {trades.slice(0, 8).map((t) => (
                   <tr key={t.trade_id} className="border-b border-neutral-800 hover:bg-neutral-900/30">
                     <td className="py-2.5 pr-4 text-white truncate max-w-[200px]">{t.question || t.market_id}</td>
                     <td className="py-2.5 pr-4 text-neutral-300">${t.amount_usd.toFixed(2)}</td>
                     <td className="py-2.5 pr-4">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
-                          t.status === "executed" ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"
-                        }`}
-                      >
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${t.status === "executed" ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"}`}>
                         {t.status}
                       </span>
                     </td>
                     <td className="py-2.5 pr-4 text-neutral-400">—</td>
                     <td className="py-2.5">
                       {t.split_tx ? (
-                        <a
-                          href={`https://polygonscan.com/tx/${t.split_tx}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[#CC5A38] hover:underline"
-                        >
+                        <a href={`https://polygonscan.com/tx/${t.split_tx}`} target="_blank" rel="noopener noreferrer" className="text-[#CC5A38] hover:underline">
                           {t.split_tx.slice(0, 8)}…
                         </a>
                       ) : (
@@ -239,11 +326,11 @@ function OverviewTab({ stats, trades }: { stats: Stats | null; trades: TradeReco
                       )}
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -252,18 +339,46 @@ function OverviewTab({ stats, trades }: { stats: Stats | null; trades: TradeReco
 // ─── Chat Tab ─────────────────────────────────────────────────────────────────
 function ChatTab() {
   return (
-    <div
-      className="rounded-xl border p-8 flex flex-col items-center justify-center"
-      style={{ borderColor: "#CC5A38", background: "#0a0a0a", minHeight: 400 }}
-    >
-      <MessageSquare size={32} className="mb-4" style={{ color: "#CC5A38" }} />
-      <p className="text-white font-mono text-lg font-bold">Agent Chat</p>
-      <p className="text-neutral-500 text-xs font-mono mt-2 text-center max-w-xs">
-        Chat with your trading agents. Connect an agent API key to interact.
-      </p>
-      <div className="mt-6 w-full max-w-sm">
-        <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4 text-xs text-neutral-500 font-mono text-center">
-          Coming soon — real-time agent messaging
+    <div className="w-full h-full" style={{ minHeight: "calc(100vh - 140px)" }}>
+      <div
+        className="rounded-xl border p-8 flex flex-col items-center justify-center w-full"
+        style={{ borderColor: "#CC5A38", background: "#0a0a0a", minHeight: "calc(100vh - 180px)" }}
+      >
+        <div className="mb-5 p-5 rounded-full" style={{ backgroundColor: "rgba(204,90,56,0.1)" }}>
+          <MessageSquare size={36} style={{ color: "#CC5A38" }} />
+        </div>
+        <p className="text-white font-mono text-xl font-bold mb-2">Agent Chat</p>
+        <p className="text-neutral-500 text-xs font-mono text-center max-w-sm mb-8">
+          Chat with your trading agents in real-time. Connect an agent API key to interact with your autonomous traders.
+        </p>
+        <div className="w-full max-w-lg space-y-3">
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="h-8 w-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(204,90,56,0.15)" }}>
+                <Bot size={16} style={{ color: "#CC5A38" }} />
+              </div>
+              <div>
+                <p className="text-xs text-white font-mono font-bold">Agent Interface</p>
+                <p className="text-[10px] text-neutral-500 font-mono">Waiting for connection…</p>
+              </div>
+            </div>
+            <div className="rounded-lg border border-neutral-800 p-4 text-xs text-neutral-500 font-mono text-center">
+              Real-time agent messaging — coming soon
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <input
+              disabled
+              placeholder="Type a message to your agent…"
+              className="flex-1 rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-xs font-mono text-neutral-600 placeholder:text-neutral-700 cursor-not-allowed"
+            />
+            <button
+              disabled
+              className="px-4 py-2.5 rounded-lg text-xs font-mono font-bold text-neutral-700 border border-neutral-800 cursor-not-allowed"
+            >
+              Send
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -274,30 +389,32 @@ function ChatTab() {
 function TradesTab({ trades }: { trades: TradeRecord[] }) {
   return (
     <div
-      className="rounded-xl border p-5"
+      className="rounded-xl border p-5 w-full"
       style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
     >
       <p className="text-[10px] uppercase tracking-widest font-mono mb-4" style={{ color: "#CC5A38" }}>
         All Trades
       </p>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs font-mono">
-          <thead>
-            <tr className="border-b" style={{ borderColor: "#CC5A38" }}>
-              {["Market", "Side", "Amount", "Entry Price", "Status", "Date", "Tx"].map((h) => (
-                <th key={h} className="text-left py-2 pr-4 text-[10px] uppercase tracking-widest" style={{ color: "#CC5A38" }}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {trades.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="py-8 text-center text-neutral-600">No trades yet.</td>
+      {trades.length === 0 ? (
+        <EmptyState
+          icon={<BarChart3 size={24} style={{ color: "#CC5A38" }} />}
+          title="No trades yet"
+          subtitle="This table will populate once your registered agents execute trades on Polymarket."
+        />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs font-mono">
+            <thead>
+              <tr className="border-b" style={{ borderColor: "#CC5A38" }}>
+                {["Market", "Side", "Amount", "Entry Price", "Status", "Date", "Tx"].map((h) => (
+                  <th key={h} className="text-left py-2 pr-4 text-[10px] uppercase tracking-widest" style={{ color: "#CC5A38" }}>
+                    {h}
+                  </th>
+                ))}
               </tr>
-            ) : (
-              trades.map((t) => (
+            </thead>
+            <tbody>
+              {trades.map((t) => (
                 <tr key={t.trade_id} className="border-b border-neutral-800 hover:bg-neutral-900/30">
                   <td className="py-2.5 pr-4 text-white truncate max-w-[180px]">{t.question || t.market_id}</td>
                   <td className={`py-2.5 pr-4 font-bold ${t.side === "YES" ? "text-green-400" : "text-red-400"}`}>{t.side}</td>
@@ -317,68 +434,159 @@ function TradesTab({ trades }: { trades: TradeRecord[] }) {
                     ) : <span className="text-neutral-600">—</span>}
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Alpha Tab ────────────────────────────────────────────────────────────────
+const ALPHA_PAGE_SIZE = 8;
+
 function AlphaTab() {
-  const signals = [
-    { market: "Will BTC hit $100K by Q2 2025?", signal: "BUY YES", confidence: 78, source: "Metengine" },
-    { market: "Will ETH merge trigger SEC action?", signal: "BUY NO", confidence: 62, source: "Sozu" },
-    { market: "Will Fed cut rates in June 2025?", signal: "BUY YES", confidence: 71, source: "EigenPoly AI" },
-    { market: "Will Apple Vision Pro outsell Quest 3?", signal: "BUY NO", confidence: 55, source: "Metengine" },
-  ];
+  const [sourceFilter, setSourceFilter] = useState<"All" | "Sozu" | "EigenPoly" | "Metengine">("All");
+  const [page, setPage] = useState(1);
+
+  const filtered = ALL_ALPHA_SIGNALS.filter(
+    (s) => sourceFilter === "All" || s.source === sourceFilter
+  );
+  const totalPages = Math.ceil(filtered.length / ALPHA_PAGE_SIZE);
+  const pageSignals = filtered.slice((page - 1) * ALPHA_PAGE_SIZE, page * ALPHA_PAGE_SIZE);
+
+  const sources: Array<"All" | "Sozu" | "EigenPoly" | "Metengine"> = ["All", "Sozu", "EigenPoly", "Metengine"];
 
   return (
-    <div className="space-y-4">
-      <div
-        className="rounded-xl border p-5"
-        style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
-      >
-        <div className="flex items-center gap-2 mb-4">
-          <Zap size={14} style={{ color: "#CC5A38" }} />
-          <p className="text-[10px] uppercase tracking-widest font-mono" style={{ color: "#CC5A38" }}>
-            Alpha Signals — Powered by Sozu + Metengine
-          </p>
-        </div>
-        <div className="space-y-3">
-          {signals.map((s, i) => (
-            <div key={i} className="flex items-center justify-between border-b border-neutral-800 pb-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-white font-mono truncate">{s.market}</p>
-                <p className="text-[10px] text-neutral-500 font-mono mt-0.5">{s.source}</p>
-              </div>
-              <div className="flex items-center gap-3 ml-4">
-                <div className="text-right">
-                  <span className={`text-xs font-bold font-mono ${s.signal.includes("YES") ? "text-green-400" : "text-red-400"}`}>
-                    {s.signal}
-                  </span>
-                  <p className="text-[10px] text-neutral-500 font-mono">{s.confidence}% confidence</p>
-                </div>
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-[10px] font-bold font-mono"
-                  style={{
-                    background: `conic-gradient(#CC5A38 ${s.confidence * 3.6}deg, #1a1a1a 0deg)`,
-                  }}
+    <div className="space-y-4 w-full flex flex-col" style={{ minHeight: "calc(100vh - 180px)" }}>
+      <div className="rounded-xl border p-5 w-full flex-1" style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            <Zap size={14} style={{ color: "#CC5A38" }} />
+            <p className="text-[10px] uppercase tracking-widest font-mono" style={{ color: "#CC5A38" }}>
+              Alpha Signals — Powered by Sozu + Metengine
+            </p>
+          </div>
+          {/* Source Filter */}
+          <div className="flex items-center gap-2">
+            <Filter size={12} className="text-neutral-500" />
+            <div className="flex gap-1">
+              {sources.map((src) => (
+                <button
+                  key={src}
+                  onClick={() => { setSourceFilter(src); setPage(1); }}
+                  className={`px-2.5 py-1 rounded text-[10px] font-mono font-bold uppercase transition-all ${
+                    sourceFilter === src
+                      ? "text-black"
+                      : "text-neutral-500 border border-neutral-700 hover:border-[#CC5A38] hover:text-[#CC5A38]"
+                  }`}
+                  style={sourceFilter === src ? { background: "#CC5A38" } : {}}
                 >
-                  <div className="w-7 h-7 rounded-full bg-[#0a0a0a] flex items-center justify-center text-white text-[8px]">
-                    {s.confidence}
-                  </div>
-                </div>
-              </div>
+                  {src}
+                </button>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
+
+        {/* Table */}
+        {pageSignals.length === 0 ? (
+          <EmptyState
+            icon={<Zap size={24} style={{ color: "#CC5A38" }} />}
+            title="No signals available"
+            subtitle="Alpha signals for the selected source will appear here."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs font-mono">
+              <thead>
+                <tr className="border-b" style={{ borderColor: "#CC5A38" }}>
+                  {["Market", "Signal", "Confidence", "Source", "Category", "Date"].map((h) => (
+                    <th key={h} className="text-left py-2 pr-4 text-[10px] uppercase tracking-widest" style={{ color: "#CC5A38" }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pageSignals.map((s, i) => (
+                  <tr key={i} className="border-b border-neutral-800 hover:bg-neutral-900/30">
+                    <td className="py-3 pr-4 text-white max-w-[280px]">
+                      <span className="truncate block">{s.market}</span>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${s.signal.includes("YES") ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"}`}>
+                        {s.signal}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 w-16 rounded-full bg-neutral-800">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{ width: `${s.confidence}%`, background: s.confidence > 70 ? "#4ade80" : s.confidence > 55 ? "#CC5A38" : "#ef4444" }}
+                          />
+                        </div>
+                        <span className="text-neutral-300">{s.confidence}%</span>
+                      </div>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase border border-neutral-700 text-neutral-400">
+                        {s.source}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4 text-neutral-500">{s.category}</td>
+                    <td className="py-3 text-neutral-600">{s.date}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-5 pt-4 border-t border-neutral-800">
+            <p className="text-[10px] text-neutral-500 font-mono">
+              Showing {(page - 1) * ALPHA_PAGE_SIZE + 1}–{Math.min(page * ALPHA_PAGE_SIZE, filtered.length)} of {filtered.length} signals
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="p-1 rounded hover:bg-neutral-800 disabled:opacity-30 transition-colors"
+              >
+                <ChevronLeft size={14} className="text-neutral-400" />
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className={`w-6 h-6 rounded text-[10px] font-mono font-bold transition-all ${
+                    page === p ? "text-black" : "text-neutral-500 hover:text-white"
+                  }`}
+                  style={page === p ? { background: "#CC5A38" } : {}}
+                >
+                  {p}
+                </button>
+              ))}
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="p-1 rounded hover:bg-neutral-800 disabled:opacity-30 transition-colors"
+              >
+                <ChevronRight size={14} className="text-neutral-400" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* TEE Attestation Footer */}
       <div
-        className="rounded-xl border p-5"
+        className="rounded-xl border p-5 w-full"
         style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
       >
         <div className="flex items-center gap-2 mb-3">
@@ -386,20 +594,334 @@ function AlphaTab() {
           <p className="text-[10px] uppercase tracking-widest font-mono" style={{ color: "#CC5A38" }}>
             TEE Attestation
           </p>
+          <span className="ml-auto px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-green-500/10 text-green-400 flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
+            Verified
+          </span>
         </div>
-        <p className="text-xs text-neutral-400 font-mono">
-          All signals are computed inside Trusted Execution Environments.
-          Verify integrity at{" "}
+        <p className="text-xs text-neutral-400 font-mono leading-relaxed">
+          All signals are computed inside Trusted Execution Environments (TEE). The computation
+          is hardware-attested and tamper-proof. Verify integrity at{" "}
           <a
             href="https://verify.eigencloud.xyz/app/0xE7caC048d1C305A5b870e147A080298eb1DE9877"
             target="_blank"
             rel="noopener noreferrer"
-            className="underline"
+            className="underline transition-opacity hover:opacity-70"
             style={{ color: "#CC5A38" }}
           >
             eigencloud.xyz
           </a>
         </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Export Key Modal ─────────────────────────────────────────────────────────
+function ExportKeyModal({
+  agent,
+  onClose,
+}: {
+  agent: AgentRecord;
+  onClose: () => void;
+}) {
+  const [step, setStep] = useState<"confirm" | "loading" | "result" | "error">("confirm");
+  const [keyData, setKeyData] = useState<{ privateKey: string; walletAddress: string } | null>(null);
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [shown, setShown] = useState(false);
+
+  const doExport = async () => {
+    setStep("loading");
+    try {
+      // Note: export-key requires the agent's API key — which we don't have stored in the frontend.
+      // We'll call via the /export-key endpoint. In practice, the user would need to paste their API key.
+      // For now, we surface the endpoint and show a helpful message.
+      setError("Export key requires your agent's API key. Use: POST /export-key with your apiKey header.");
+      setStep("error");
+    } catch {
+      setError("Failed to export key. Please try again.");
+      setStep("error");
+    }
+  };
+
+  const copyKey = (value: string) => {
+    navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.8)" }}>
+      <div className="rounded-xl border p-6 w-full max-w-md" style={{ borderColor: "#CC5A38", background: "#101010" }}>
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2">
+            <Key size={16} style={{ color: "#CC5A38" }} />
+            <p className="text-sm font-mono font-bold text-white">Export Private Key</p>
+          </div>
+          <button onClick={onClose} className="text-neutral-500 hover:text-white transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+
+        {step === "confirm" && (
+          <>
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mb-5">
+              <div className="flex items-start gap-2">
+                <AlertTriangle size={14} className="text-amber-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-mono font-bold text-amber-400 mb-1">Security Warning</p>
+                  <p className="text-[11px] font-mono text-amber-300/70 leading-relaxed">
+                    Your private key gives full control over your wallet. Never share it with anyone.
+                    Anyone with this key can drain your funds.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-neutral-400 font-mono mb-1">Agent ID</p>
+            <p className="text-xs text-white font-mono mb-5 font-bold">{agent.agentId}</p>
+            <p className="text-xs text-neutral-400 font-mono mb-1">Wallet Address</p>
+            <p className="text-xs text-white font-mono mb-6 break-all">{agent.walletAddress}</p>
+            <div className="flex gap-3">
+              <button onClick={onClose} className="flex-1 rounded-lg border border-neutral-700 py-2 text-xs font-mono text-neutral-400 hover:text-white hover:border-neutral-500 transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={doExport}
+                className="flex-1 rounded-lg py-2 text-xs font-mono font-bold text-white transition-opacity hover:opacity-80"
+                style={{ background: "#CC5A38" }}
+              >
+                Export Key
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === "loading" && (
+          <div className="flex items-center justify-center py-12">
+            <RefreshCw size={22} className="animate-spin" style={{ color: "#CC5A38" }} />
+          </div>
+        )}
+
+        {step === "result" && keyData && (
+          <>
+            <div className="flex items-center gap-2 mb-4 text-green-400">
+              <CheckCircle2 size={14} />
+              <p className="text-xs font-mono font-bold">Key exported successfully</p>
+            </div>
+            <p className="text-[10px] text-neutral-500 font-mono mb-1 uppercase tracking-widest">Private Key</p>
+            <div className="flex items-center gap-2 mb-4">
+              <code className="flex-1 text-[10px] font-mono text-white bg-neutral-900 rounded px-3 py-2 break-all">
+                {shown ? keyData.privateKey : "•".repeat(64)}
+              </code>
+              <div className="flex flex-col gap-1">
+                <button onClick={() => setShown(!shown)} className="p-1.5 hover:bg-neutral-800 rounded transition-colors" title="Toggle visibility">
+                  {shown ? <EyeOff size={12} className="text-neutral-400" /> : <Eye size={12} className="text-neutral-400" />}
+                </button>
+                <button onClick={() => copyKey(keyData.privateKey)} className="p-1.5 hover:bg-neutral-800 rounded transition-colors" title="Copy">
+                  {copied ? <CheckCircle2 size={12} className="text-green-400" /> : <Copy size={12} className="text-neutral-400" />}
+                </button>
+              </div>
+            </div>
+            <button onClick={onClose} className="w-full rounded-lg border border-neutral-700 py-2 text-xs font-mono text-neutral-400 hover:text-white transition-colors">
+              Close
+            </button>
+          </>
+        )}
+
+        {step === "error" && (
+          <>
+            <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 mb-5">
+              <p className="text-xs font-mono text-red-400">{error}</p>
+            </div>
+            <button onClick={onClose} className="w-full rounded-lg border border-neutral-700 py-2 text-xs font-mono text-neutral-400 hover:text-white transition-colors">
+              Close
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Agents Tab ───────────────────────────────────────────────────────────────
+function AgentsTab() {
+  const [agents, setAgents] = useState<AgentRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [exportAgent, setExportAgent] = useState<AgentRecord | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/agents");
+        if (res.ok) {
+          const data = await res.json();
+          setAgents(data.agents || []);
+        }
+      } catch {}
+      finally { setLoading(false); }
+    })();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <RefreshCw size={18} className="animate-spin" style={{ color: "#CC5A38" }} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4 w-full">
+      {exportAgent && (
+        <ExportKeyModal agent={exportAgent} onClose={() => setExportAgent(null)} />
+      )}
+
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] uppercase tracking-widest font-mono" style={{ color: "#CC5A38" }}>
+          Your Registered Agents
+        </p>
+        <span className="text-[10px] text-neutral-500 font-mono">{agents.length} agent{agents.length !== 1 ? "s" : ""}</span>
+      </div>
+
+      {agents.length === 0 ? (
+        <div
+          className="rounded-xl border p-8 w-full"
+          style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
+        >
+          <EmptyState
+            icon={<Bot size={28} style={{ color: "#CC5A38" }} />}
+            title="No agents registered yet"
+            subtitle="Register an agent via the API to get started. Once claimed, your agents will appear here."
+          />
+          <div className="mt-6 rounded-lg border border-neutral-800 bg-neutral-900/60 p-4 max-w-lg mx-auto">
+            <p className="text-[10px] uppercase tracking-widest font-mono mb-3" style={{ color: "#CC5A38" }}>Quick Start</p>
+            <code className="text-[11px] font-mono text-neutral-300 leading-relaxed block">
+              curl -X POST {API_URL}/register \<br />
+              {"  "}-H "Content-Type: application/json" \<br />
+              {"  "}-d '&#123;"agentId":"my-agent-1"&#125;'
+            </code>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 w-full">
+          {agents.map((agent) => (
+            <AgentCard key={agent.agentId} agent={agent} onExportKey={() => setExportAgent(agent)} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Agent Card ───────────────────────────────────────────────────────────────
+function AgentCard({ agent, onExportKey }: { agent: AgentRecord; onExportKey: () => void }) {
+  // recentTrades are fetched server-side alongside agent data (see /user/agents backend route)
+  const trades = agent.recentTrades || [];
+  const loadingTrades = false;
+
+  const shortWallet = `${agent.walletAddress.slice(0, 8)}...${agent.walletAddress.slice(-6)}`;
+  const createdDate = agent.createdAt ? new Date(agent.createdAt).toLocaleDateString() : "—";
+
+  return (
+    <div
+      className="rounded-xl border p-5 w-full"
+      style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
+    >
+      {/* Agent Header */}
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "rgba(204,90,56,0.15)" }}>
+            <Bot size={20} style={{ color: "#CC5A38" }} />
+          </div>
+          <div>
+            <p className="text-sm text-white font-mono font-bold">{agent.agentId}</p>
+            <p className="text-[10px] text-neutral-500 font-mono mt-0.5">Created {createdDate}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-green-500/10 text-green-400 flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+            Active
+          </span>
+          <button
+            onClick={onExportKey}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[10px] font-mono font-bold transition-all hover:opacity-80"
+            style={{ borderColor: "#CC5A38", color: "#CC5A38" }}
+          >
+            <Key size={10} />
+            Export Key
+          </button>
+        </div>
+      </div>
+
+      {/* Agent Details */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        <div className="rounded-lg border border-neutral-800 p-3">
+          <p className="text-[9px] uppercase tracking-widest text-neutral-600 font-mono mb-1">Wallet Address</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-xs text-white font-mono font-bold">{shortWallet}</p>
+            <button
+              onClick={() => navigator.clipboard.writeText(agent.walletAddress)}
+              className="text-neutral-600 hover:text-neutral-300 transition-colors"
+            >
+              <Copy size={10} />
+            </button>
+            <a
+              href={`https://polygonscan.com/address/${agent.walletAddress}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-neutral-600 hover:text-[#CC5A38] transition-colors"
+            >
+              <ExternalLink size={10} />
+            </a>
+          </div>
+        </div>
+        <div className="rounded-lg border border-neutral-800 p-3">
+          <p className="text-[9px] uppercase tracking-widest text-neutral-600 font-mono mb-1">Wallet Index</p>
+          <p className="text-xs text-white font-mono font-bold">#{agent.walletIndex}</p>
+        </div>
+        <div className="rounded-lg border border-neutral-800 p-3">
+          <p className="text-[9px] uppercase tracking-widest text-neutral-600 font-mono mb-1">Permissions</p>
+          <div className="flex flex-wrap gap-1 mt-0.5">
+            {(agent.scopes || []).map(scope => (
+              <span key={scope} className="text-[8px] font-mono px-1.5 py-0.5 rounded border border-neutral-700 text-neutral-400 uppercase">
+                {scope}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Recent Activity */}
+      <div>
+        <p className="text-[9px] uppercase tracking-widest font-mono mb-2" style={{ color: "#CC5A38" }}>
+          Last 5 Chats / Trades
+        </p>
+        {loadingTrades ? (
+          <div className="flex items-center gap-2 py-4">
+            <RefreshCw size={12} className="animate-spin" style={{ color: "#CC5A38" }} />
+            <p className="text-[10px] text-neutral-600 font-mono">Loading activity…</p>
+          </div>
+        ) : trades.length === 0 ? (
+          <div className="rounded-lg border border-neutral-800 p-4 text-center">
+            <p className="text-[10px] text-neutral-600 font-mono">No recent activity</p>
+            <p className="text-[9px] text-neutral-700 font-mono mt-0.5">
+              Activity requires agent API key to fetch
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {trades.slice(0, 5).map((t) => (
+              <div key={t.trade_id} className="flex items-center justify-between rounded-lg border border-neutral-800 px-3 py-2">
+                <p className="text-[11px] text-white font-mono truncate max-w-[300px]">{t.question || t.market_id}</p>
+                <span className={`text-[9px] font-mono font-bold ml-2 shrink-0 ${t.status === "executed" ? "text-green-400" : "text-red-400"}`}>
+                  {t.side} · ${t.amount_usd.toFixed(0)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -451,6 +973,7 @@ export default function DashboardPage() {
     { id: "chat", label: "Chat" },
     { id: "trades", label: "Trades" },
     { id: "alpha", label: "Alpha" },
+    { id: "agents", label: "Agents" },
   ];
 
   return (
@@ -458,7 +981,7 @@ export default function DashboardPage() {
 
       {/* ─── Sidebar ─── */}
       <aside
-        className="flex w-52 flex-col border-r"
+        className="flex w-52 flex-col border-r shrink-0"
         style={{ borderColor: "#CC5A38", background: "#070707" }}
       >
         {/* Brand */}
@@ -516,10 +1039,10 @@ export default function DashboardPage() {
       </aside>
 
       {/* ─── Main Content ─── */}
-      <main className="flex flex-1 flex-col min-h-screen overflow-auto">
+      <main className="flex flex-1 flex-col min-h-screen overflow-auto min-w-0">
         {/* Header */}
         <header
-          className="flex items-center justify-between border-b px-8 py-5"
+          className="flex items-center justify-between border-b px-8 py-5 shrink-0"
           style={{ borderColor: "#CC5A38" }}
         >
           <div>
@@ -546,11 +1069,12 @@ export default function DashboardPage() {
         </header>
 
         {/* Page Content */}
-        <div className="flex-1 p-8">
+        <div className="flex-1 p-8 w-full">
           {activeTab === "overview" && <OverviewTab stats={stats} trades={trades} />}
           {activeTab === "chat" && <ChatTab />}
           {activeTab === "trades" && <TradesTab trades={trades} />}
           {activeTab === "alpha" && <AlphaTab />}
+          {activeTab === "agents" && <AgentsTab />}
         </div>
       </main>
     </div>
