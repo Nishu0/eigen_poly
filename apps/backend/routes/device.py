@@ -204,7 +204,7 @@ async def poll_device(req: PollRequest):
 
 @router.get("/user/agents")
 async def get_user_agents(request: Request):
-    """Get all agents owned by the logged-in user."""
+    """Get all agents owned by the logged-in user, including last 5 trades each."""
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Login required")
@@ -217,12 +217,43 @@ async def get_user_agents(request: Request):
 
     agents = []
     for r in rows:
+        agent_id = r["agent_id"]
+
+        # Fetch last 5 trades for this agent
+        trade_rows = await pool.fetch(
+            """SELECT trade_id, market_id, question, side, amount_usd, entry_price,
+                      status, clob_filled, split_tx, created_at
+               FROM trades
+               WHERE agent_id = $1
+               ORDER BY created_at DESC
+               LIMIT 5""",
+            agent_id,
+        )
+
+        recent_trades = [
+            {
+                "trade_id": t["trade_id"],
+                "market_id": t["market_id"],
+                "question": t.get("question") or "",
+                "side": t["side"],
+                "amount_usd": float(t["amount_usd"]),
+                "entry_price": float(t["entry_price"]) if t.get("entry_price") else None,
+                "status": t.get("status", "executed"),
+                "clob_filled": bool(t.get("clob_filled", False)),
+                "split_tx": t.get("split_tx"),
+                "created_at": t["created_at"].isoformat() if t.get("created_at") else "",
+            }
+            for t in trade_rows
+        ]
+
         agents.append({
-            "agentId": r["agent_id"],
+            "agentId": agent_id,
             "walletAddress": r["wallet_address"],
-            "walletIndex": r.get("wallet_index", 0),
+            "walletIndex": r.get("wallet_index", 0) or 0,
             "scopes": list(r["scopes"]) if r["scopes"] else [],
             "createdAt": r["created_at"].isoformat() if r["created_at"] else "",
+            "recentTrades": recent_trades,
         })
 
     return {"agents": agents}
+

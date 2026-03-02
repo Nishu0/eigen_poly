@@ -17,6 +17,8 @@ from routes.export_key import router as export_key_router
 from routes.oauth import router as oauth_router
 from routes.device import router as device_router
 from routes.stats import router as stats_router
+from routes.logs import router as logs_router
+from lib.logging_middleware import AgentLogMiddleware
 
 
 @asynccontextmanager
@@ -54,6 +56,10 @@ app.include_router(export_key_router, tags=["Wallet"])
 app.include_router(oauth_router)
 app.include_router(device_router)
 app.include_router(stats_router, tags=["Stats"])
+app.include_router(logs_router, tags=["Logs"])
+
+# Add logging middleware (after routes are set up)
+app.add_middleware(AgentLogMiddleware)
 
 
 @app.get("/health")

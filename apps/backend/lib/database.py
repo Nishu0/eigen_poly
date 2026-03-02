@@ -79,6 +79,19 @@ CREATE TABLE IF NOT EXISTS positions (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Agent API request logs (every route hit via API key)
+CREATE TABLE IF NOT EXISTS agent_logs (
+    log_id TEXT PRIMARY KEY,
+    agent_id TEXT REFERENCES agents(agent_id),
+    method TEXT NOT NULL,
+    path TEXT NOT NULL,
+    status_code INTEGER,
+    duration_ms INTEGER,
+    ip_address TEXT,
+    body_snippet TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_agents_api_key_hash ON agents(api_key_hash);
 CREATE INDEX IF NOT EXISTS idx_agents_wallet ON agents(wallet_address);
@@ -88,6 +101,8 @@ CREATE INDEX IF NOT EXISTS idx_trades_market ON trades(market_id);
 CREATE INDEX IF NOT EXISTS idx_positions_agent ON positions(agent_id);
 CREATE INDEX IF NOT EXISTS idx_positions_market ON positions(market_id);
 CREATE INDEX IF NOT EXISTS idx_positions_status ON positions(status);
+CREATE INDEX IF NOT EXISTS idx_agent_logs_agent ON agent_logs(agent_id);
+CREATE INDEX IF NOT EXISTS idx_agent_logs_created ON agent_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_device_codes_user_code ON device_codes(user_code);
 CREATE INDEX IF NOT EXISTS idx_device_codes_agent ON device_codes(agent_id);
 """

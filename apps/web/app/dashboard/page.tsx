@@ -6,7 +6,7 @@ import {
   LogOut,
   RefreshCw,
   ExternalLink,
-  MessageSquare,
+  Activity,
   BarChart3,
   Zap,
   Shield,
@@ -22,6 +22,7 @@ import {
   X,
   CheckCircle2,
   TrendingUp,
+  Terminal,
 } from "lucide-react";
 import { LoginPage } from "@/components/login-page";
 
@@ -74,7 +75,19 @@ interface AlphaSignal {
   date: string;
 }
 
-type Tab = "overview" | "chat" | "trades" | "alpha" | "agents";
+interface LogRecord {
+  logId: string;
+  agentId: string;
+  method: string;
+  path: string;
+  statusCode: number;
+  durationMs: number;
+  ipAddress: string | null;
+  bodySnippet: string | null;
+  createdAt: string;
+}
+
+type Tab = "overview" | "logs" | "trades" | "alpha" | "agents";
 
 // ─── Alpha signals data ───────────────────────────────────────────────────────
 const ALL_ALPHA_SIGNALS: AlphaSignal[] = [
@@ -220,12 +233,12 @@ function OverviewTab({ stats, trades }: { stats: Stats | null; trades: TradeReco
       <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4 w-full">
         <div
           className="rounded-xl border p-5"
-          style={{ borderColor: "#CC5A38", background: "#0a0a0a", height: 220 }}
+          style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
         >
           <p className="text-[10px] uppercase tracking-widest font-mono mb-4" style={{ color: "#CC5A38" }}>
             Trade Volume History
           </p>
-          <div style={{ height: "calc(100% - 32px)" }}>
+          <div className="min-h-[160px]">
             {trades.length === 0 ? (
               <div className="h-full flex items-end gap-[3%]">
                 {Array(12).fill(0).map((_, i) => (
@@ -336,50 +349,211 @@ function OverviewTab({ stats, trades }: { stats: Stats | null; trades: TradeReco
   );
 }
 
-// ─── Chat Tab ─────────────────────────────────────────────────────────────────
-function ChatTab() {
+// ─── Logs Tab ───────────────────────────────────────────────────────────────
+const LOGS_PAGE_SIZE = 50;
+
+function methodColor(method: string) {
+  switch (method.toUpperCase()) {
+    case "GET":    return "bg-blue-500/10 text-blue-400";
+    case "POST":   return "bg-green-500/10 text-green-400";
+    case "PUT":    return "bg-amber-500/10 text-amber-400";
+    case "PATCH":  return "bg-purple-500/10 text-purple-400";
+    case "DELETE": return "bg-red-500/10 text-red-400";
+    default:       return "bg-neutral-500/10 text-neutral-400";
+  }
+}
+
+function statusColor(code: number) {
+  if (code < 300) return "text-green-400";
+  if (code < 400) return "text-amber-400";
+  if (code < 500) return "text-orange-400";
+  return "text-red-400";
+}
+
+function formatTime(iso: string) {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  } catch { return iso; }
+}
+
+function LogsTab() {
+  const [logs, setLogs] = useState<LogRecord[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [agentFilter, setAgentFilter] = useState<string>("all");
+  const [agentIds, setAgentIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState(Date.now());
+
+  const offset = (page - 1) * LOGS_PAGE_SIZE;
+  const totalPages = Math.max(1, Math.ceil(total / LOGS_PAGE_SIZE));
+
+  useEffect(() => {
+    setLoading(true);
+    const params = new URLSearchParams({
+      limit: String(LOGS_PAGE_SIZE),
+      offset: String(offset),
+    });
+    if (agentFilter !== "all") params.set("agent_id", agentFilter);
+
+    fetch(`/api/logs?${params}`)
+      .then(r => r.json())
+      .then(data => {
+        setLogs(data.logs || []);
+        setTotal(data.total || 0);
+        // Collect unique agent IDs for filter
+        const ids = Array.from(new Set((data.logs || []).map((l: LogRecord) => l.agentId))) as string[];
+        setAgentIds(prev => Array.from(new Set([...prev, ...ids])));
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [page, agentFilter, lastRefresh]);
+
   return (
-    <div className="w-full h-full" style={{ minHeight: "calc(100vh - 140px)" }}>
+    <div className="w-full space-y-4">
       <div
-        className="rounded-xl border p-8 flex flex-col items-center justify-center w-full"
-        style={{ borderColor: "#CC5A38", background: "#0a0a0a", minHeight: "calc(100vh - 180px)" }}
+        className="rounded-xl border p-5 w-full"
+        style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
       >
-        <div className="mb-5 p-5 rounded-full" style={{ backgroundColor: "rgba(204,90,56,0.1)" }}>
-          <MessageSquare size={36} style={{ color: "#CC5A38" }} />
-        </div>
-        <p className="text-white font-mono text-xl font-bold mb-2">Agent Chat</p>
-        <p className="text-neutral-500 text-xs font-mono text-center max-w-sm mb-8">
-          Chat with your trading agents in real-time. Connect an agent API key to interact with your autonomous traders.
-        </p>
-        <div className="w-full max-w-lg space-y-3">
-          <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-5">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="h-8 w-8 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(204,90,56,0.15)" }}>
-                <Bot size={16} style={{ color: "#CC5A38" }} />
-              </div>
-              <div>
-                <p className="text-xs text-white font-mono font-bold">Agent Interface</p>
-                <p className="text-[10px] text-neutral-500 font-mono">Waiting for connection…</p>
-              </div>
-            </div>
-            <div className="rounded-lg border border-neutral-800 p-4 text-xs text-neutral-500 font-mono text-center">
-              Real-time agent messaging — coming soon
-            </div>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            <Terminal size={14} style={{ color: "#CC5A38" }} />
+            <p className="text-[10px] uppercase tracking-widest font-mono" style={{ color: "#CC5A38" }}>
+              Agent API Logs
+            </p>
+            {total > 0 && (
+              <span className="text-[10px] text-neutral-600 font-mono">({total} entries)</span>
+            )}
           </div>
-          <div className="flex gap-2">
-            <input
-              disabled
-              placeholder="Type a message to your agent…"
-              className="flex-1 rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-xs font-mono text-neutral-600 placeholder:text-neutral-700 cursor-not-allowed"
-            />
+          <div className="flex items-center gap-2">
+            {/* Agent filter */}
+            {agentIds.length > 0 && (
+              <div className="flex gap-1 items-center">
+                <Filter size={11} className="text-neutral-600" />
+                <button
+                  onClick={() => { setAgentFilter("all"); setPage(1); }}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase transition-all ${
+                    agentFilter === "all" ? "text-black" : "text-neutral-500 border border-neutral-700 hover:border-[#CC5A38] hover:text-[#CC5A38]"
+                  }`}
+                  style={agentFilter === "all" ? { background: "#CC5A38" } : {}}
+                >
+                  All
+                </button>
+                {agentIds.map(id => (
+                  <button
+                    key={id}
+                    onClick={() => { setAgentFilter(id); setPage(1); }}
+                    className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase transition-all ${
+                      agentFilter === id ? "text-black" : "text-neutral-500 border border-neutral-700 hover:border-[#CC5A38] hover:text-[#CC5A38]"
+                    }`}
+                    style={agentFilter === id ? { background: "#CC5A38" } : {}}
+                  >
+                    {id.length > 12 ? id.slice(0, 12) + "…" : id}
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* Refresh */}
             <button
-              disabled
-              className="px-4 py-2.5 rounded-lg text-xs font-mono font-bold text-neutral-700 border border-neutral-800 cursor-not-allowed"
+              onClick={() => { setPage(1); setLastRefresh(Date.now()); }}
+              className="p-1.5 rounded hover:bg-neutral-800 transition-colors"
+              title="Refresh"
             >
-              Send
+              <RefreshCw size={12} className={`text-neutral-500 ${loading ? "animate-spin" : ""}`} />
             </button>
           </div>
         </div>
+
+        {/* Table */}
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <RefreshCw size={18} className="animate-spin" style={{ color: "#CC5A38" }} />
+          </div>
+        ) : logs.length === 0 ? (
+          <EmptyState
+            icon={<Activity size={24} style={{ color: "#CC5A38" }} />}
+            title="No logs yet"
+            subtitle="Every API route your agents hit will be recorded here in real-time."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs font-mono">
+              <thead>
+                <tr className="border-b" style={{ borderColor: "#CC5A38" }}>
+                  {["Time", "Agent", "Method", "Path", "Status", "Duration", "IP"].map(h => (
+                    <th key={h} className="text-left py-2 pr-4 text-[10px] uppercase tracking-widest" style={{ color: "#CC5A38" }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {logs.map(log => (
+                  <tr key={log.logId} className="border-b border-neutral-800/60 hover:bg-neutral-900/30 transition-colors">
+                    <td className="py-2.5 pr-4 text-neutral-500 whitespace-nowrap">{formatTime(log.createdAt)}</td>
+                    <td className="py-2.5 pr-4">
+                      <span className="text-white font-bold">{log.agentId.length > 14 ? log.agentId.slice(0, 14) + "…" : log.agentId}</span>
+                    </td>
+                    <td className="py-2.5 pr-4">
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${methodColor(log.method)}`}>
+                        {log.method}
+                      </span>
+                    </td>
+                    <td className="py-2.5 pr-4 text-neutral-300 max-w-[220px] truncate font-mono">{log.path}</td>
+                    <td className={`py-2.5 pr-4 font-bold ${statusColor(log.statusCode)}`}>{log.statusCode}</td>
+                    <td className="py-2.5 pr-4 text-neutral-500">
+                      {log.durationMs != null ? (
+                        <span className={log.durationMs > 1000 ? "text-amber-400" : "text-neutral-400"}>
+                          {log.durationMs}ms
+                        </span>
+                      ) : "—"}
+                    </td>
+                    <td className="py-2.5 text-neutral-600">{log.ipAddress || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-5 pt-4 border-t border-neutral-800">
+            <p className="text-[10px] text-neutral-500 font-mono">
+              {offset + 1}–{Math.min(offset + LOGS_PAGE_SIZE, total)} of {total}
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="p-1 rounded hover:bg-neutral-800 disabled:opacity-30 transition-colors"
+              >
+                <ChevronLeft size={14} className="text-neutral-400" />
+              </button>
+              {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => i + 1).map(p => (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className={`w-6 h-6 rounded text-[10px] font-mono font-bold transition-all ${
+                    page === p ? "text-black" : "text-neutral-500 hover:text-white"
+                  }`}
+                  style={page === p ? { background: "#CC5A38" } : {}}
+                >
+                  {p}
+                </button>
+              ))}
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="p-1 rounded hover:bg-neutral-800 disabled:opacity-30 transition-colors"
+              >
+                <ChevronRight size={14} className="text-neutral-400" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -970,7 +1144,7 @@ export default function DashboardPage() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "Overview" },
-    { id: "chat", label: "Chat" },
+    { id: "logs", label: "Logs" },
     { id: "trades", label: "Trades" },
     { id: "alpha", label: "Alpha" },
     { id: "agents", label: "Agents" },
@@ -1071,7 +1245,7 @@ export default function DashboardPage() {
         {/* Page Content */}
         <div className="flex-1 p-8 w-full">
           {activeTab === "overview" && <OverviewTab stats={stats} trades={trades} />}
-          {activeTab === "chat" && <ChatTab />}
+          {activeTab === "logs" && <LogsTab />}
           {activeTab === "trades" && <TradesTab trades={trades} />}
           {activeTab === "alpha" && <AlphaTab />}
           {activeTab === "agents" && <AgentsTab />}
