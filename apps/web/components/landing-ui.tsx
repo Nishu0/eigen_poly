@@ -11,13 +11,12 @@ export function LandingUI() {
       <header className="flex justify-between items-center p-6 md:p-10 uppercase text-xs md:text-sm tracking-wider font-semibold">
         <div className="flex items-center gap-3 bg-[#E6E2D6]/80 px-4 py-2 rounded-full border border-[#1a1a1a]/10 backdrop-blur-sm pointer-events-auto">
           <div className="w-2.5 h-2.5 rounded-full bg-[#CC5A38] animate-pulse"></div>
-          <span>EIGENPOLY // PREDICTION PROTOCOL</span>
+          <span>EIGENPOLY</span>
         </div>
         
         <div className="flex gap-6 md:gap-10 pointer-events-auto">
-          <Link href="/dashboard" className="hover:text-[#CC5A38] transition-colors border-b border-transparent hover:border-[#CC5A38]">MARKETS</Link>
-          <Link href="/dashboard" className="hover:text-[#CC5A38] transition-colors border-b border-transparent hover:border-[#CC5A38]">AGENTS</Link>
-          <Link href="/dashboard" className="hover:text-[#CC5A38] transition-colors border-b border-transparent hover:border-[#CC5A38]">DEVELOPERS</Link>
+          <Link href="/skills.md" className="hover:text-[#CC5A38] transition-colors border-b border-transparent hover:border-[#CC5A38]">AGENTS</Link>
+          <Link href="/dashboard" className="hover:text-[#CC5A38] transition-colors border-b border-transparent hover:border-[#CC5A38]">DASHBOARD</Link>
         </div>
       </header>
 
@@ -31,13 +30,13 @@ export function LandingUI() {
             CURRENCY: USDC.E<br />
             STATUS: LIVE
           </p>
-          <p className="font-bold text-[#CC5A38]">[AI PREDICTIONS]</p>
+           <Link href="/dashboard" className="font-bold border-b border-[#1a1a1a] pb-0.5 hover:text-[#CC5A38] hover:border-[#CC5A38] transition-colors inline-block pointer-events-auto text-[#CC5A38]">[Eigen Cloud Link]</Link>
         </div>
 
         {/* Hero Title */}
-        <div className="relative flex flex-col items-center justify-center pointer-events-auto text-center z-10 pointer-events-none">
-          <h1 className="text-[12vw] md:text-[15vw] leading-none font-black text-[#1a1a1a] tracking-tighter" style={{ fontFamily: "var(--font-display, serif)", textShadow: "4px 4px 0px rgba(255,255,255,0.4)" }}>
-            EIGEN<br className="md:hidden"/>POLY
+        <div className="relative flex flex-col items-center justify-center pointer-events-auto text-center z-10 pointer-events-none mt-12 md:mt-24">
+          <h1 className="text-[14vw] md:text-[16vw] lg:text-[8vw] leading-none font-black text-[#1a1a1a] tracking-tight" style={{ fontFamily: "var(--font-display, serif)", textShadow: "4px 4px 0px rgba(255,255,255,0.4)" }}>
+            EIGENPOLY
           </h1>
           
           <div className="pt-8 flex flex-wrap justify-center gap-2 md:gap-4 pointer-events-auto max-w-[90vw]">
@@ -75,7 +74,7 @@ export function LandingUI() {
       </main>
 
       {/* Footer / Map Section */}
-      <div className="relative h-[20vh] w-full mt-auto overflow-hidden">
+      <div className="relative h-[25vh] md:h-[30vh] lg:h-[35vh] w-full mt-auto overflow-hidden">
         {/* Mountains / Map graphic */}
         <div className="absolute bottom-0 left-0 w-full h-full pointer-events-none">
           <svg preserveAspectRatio="none" width="100%" height="100%" viewBox="0 0 1440 320" xmlns="http://www.w3.org/2000/svg">
@@ -86,9 +85,9 @@ export function LandingUI() {
         
         <div className="absolute inset-0 flex justify-between items-end p-6 md:p-10 uppercase text-[10px] md:text-xs text-[#E6E2D6] font-semibold mix-blend-difference">
           <div>
-            EIGEN LAYER<br />
-            POLYGON<br />
-            MAINNET
+            Eigen Cloud<br />
+            Metengine<br />
+            Sozu
           </div>
           <div className="flex-1 flex justify-center pb-2">
             <div className="w-12 h-12 rounded-full border-2 border-[#E6E2D6]/50 flex items-center justify-center relative pointer-events-auto hover:border-[#E6E2D6] transition-colors cursor-crosshair">
@@ -96,9 +95,11 @@ export function LandingUI() {
             </div>
           </div>
           <div className="text-right">
-            PREDICT THE FUTURE<br />
-            DECENTRALIZED<br />
-            ALWAYS ON
+            <Link href="https://x.com/itsnishu" target="_blank" rel="noopener noreferrer">
+              Built<br />
+              by<br />
+              Nisarg
+            </Link>
           </div>
         </div>
       </div>
