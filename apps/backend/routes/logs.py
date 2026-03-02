@@ -84,3 +84,45 @@ async def get_user_logs(
         "limit": limit,
         "offset": offset,
     }
+
+
+@router.get("/user/trades")
+async def get_user_trades(
+    request: Request,
+    limit: int = Query(100, ge=1, le=500),
+):
+    """Return all trades for agents owned by the logged-in user (most recent first)."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+
+    pool = get_pool()
+    rows = await pool.fetch(
+        """SELECT t.trade_id, t.agent_id, t.market_id, t.question, t.side,
+                  t.amount_usd, t.entry_price, t.status, t.clob_filled,
+                  t.split_tx, t.created_at
+           FROM trades t
+           JOIN agents a ON t.agent_id = a.agent_id
+           WHERE a.owner_id = $1
+           ORDER BY t.created_at DESC
+           LIMIT $2""",
+        user["sub"], limit,
+    )
+
+    return {
+        "trades": [
+            {
+                "trade_id": r["trade_id"],
+                "market_id": r["market_id"],
+                "question": r.get("question") or "",
+                "side": r["side"],
+                "amount_usd": float(r["amount_usd"]),
+                "entry_price": float(r["entry_price"]) if r.get("entry_price") else None,
+                "status": r.get("status", "executed"),
+                "clob_filled": bool(r.get("clob_filled", False)),
+                "split_tx": r.get("split_tx"),
+                "created_at": r["created_at"].isoformat() if r.get("created_at") else "",
+            }
+            for r in rows
+        ]
+    }

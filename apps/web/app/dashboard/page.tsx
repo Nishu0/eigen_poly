@@ -164,41 +164,139 @@ function StatCard({
   );
 }
 
-function BarChart({ values }: { values: number[] }) {
-  const max = Math.max(...values, 1);
+// ─── Volume Chart with hover tooltips ──────────────────────────────────────────────────────────
+function VolumeChart({ buckets }: { buckets: { label: string; value: number }[] }) {
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const max = Math.max(...buckets.map(b => b.value), 1);
+  const fmtUSD = (n: number) => n >= 1000 ? `$${(n / 1000).toFixed(1)}K` : `$${n.toFixed(2)}`;
+
   return (
-    <div className="flex items-end gap-[3%] h-full w-full">
-      {values.map((v, i) => (
+    <div className="flex items-end gap-[2px] h-full w-full relative">
+      {buckets.map((b, i) => (
         <div
           key={i}
-          className="flex-1 rounded-sm transition-all hover:opacity-80"
-          style={{
-            height: `${(v / max) * 100}%`,
-            background: "linear-gradient(to top, #CC5A38, #e8855f)",
-            minHeight: 4,
-          }}
-        />
+          className="flex-1 relative flex items-end group cursor-default"
+          style={{ height: "100%" }}
+          onMouseEnter={() => setHoveredIdx(i)}
+          onMouseLeave={() => setHoveredIdx(null)}
+        >
+          {/* Tooltip */}
+          {hoveredIdx === i && (
+            <div
+              className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-10 whitespace-nowrap
+                         rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-[10px] font-mono shadow-xl"
+              style={{ color: "#E6E2D6" }}
+            >
+              <span className="block text-[9px] text-neutral-500">{b.label}</span>
+              <span className="font-bold" style={{ color: "#CC5A38" }}>{fmtUSD(b.value)}</span>
+            </div>
+          )}
+          {/* Bar */}
+          <div
+            className="w-full rounded-sm transition-all duration-150"
+            style={{
+              height: b.value > 0 ? `${Math.max((b.value / max) * 100, 4)}%` : "3px",
+              background: b.value > 0
+                ? hoveredIdx === i
+                  ? "linear-gradient(to top, #e8855f, #f0a080)"
+                  : "linear-gradient(to top, #CC5A38, #e8855f)"
+                : "#1e1e1e",
+              opacity: hoveredIdx !== null && hoveredIdx !== i ? 0.5 : 1,
+            }}
+          />
+        </div>
       ))}
     </div>
   );
 }
 
-// ─── Overview Tab ─────────────────────────────────────────────────────────────
+type TimeFrame = "1d" | "7d" | "1m";
+type TradeFilter = "all" | "success";
+
+function buildVolumeBuckets(trades: TradeRecord[], timeframe: TimeFrame): { label: string; value: number }[] {
+  const now = Date.now();
+  const executed = trades.filter(t => t.status === "executed");
+
+  if (timeframe === "1d") {
+    // 24 hourly buckets
+    const cutoff = now - 24 * 60 * 60 * 1000;
+    const buckets = Array(24).fill(0);
+    executed.forEach(t => {
+      const ms = new Date(t.created_at).getTime();
+      if (ms < cutoff) return;
+      const hoursAgo = Math.floor((now - ms) / (60 * 60 * 1000));
+      const idx = 23 - Math.min(hoursAgo, 23);
+      buckets[idx] += t.amount_usd;
+    });
+    return buckets.map((v, i) => ({
+      label: `${23 - i}h ago`,
+      value: v,
+    }));
+  }
+
+  if (timeframe === "7d") {
+    // 7 daily buckets
+    const cutoff = now - 7 * 24 * 60 * 60 * 1000;
+    const buckets = Array(7).fill(0);
+    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    executed.forEach(t => {
+      const ms = new Date(t.created_at).getTime();
+      if (ms < cutoff) return;
+      const daysAgo = Math.floor((now - ms) / (24 * 60 * 60 * 1000));
+      const idx = 6 - Math.min(daysAgo, 6);
+      buckets[idx] += t.amount_usd;
+    });
+    return buckets.map((v, i) => {
+      const d = new Date(now - (6 - i) * 24 * 60 * 60 * 1000);
+      return { label: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }), value: v };
+    });
+  }
+
+  // 1m — 30 daily buckets
+  const cutoff = now - 30 * 24 * 60 * 60 * 1000;
+  const buckets = Array(30).fill(0);
+  executed.forEach(t => {
+    const ms = new Date(t.created_at).getTime();
+    if (ms < cutoff) return;
+    const daysAgo = Math.floor((now - ms) / (24 * 60 * 60 * 1000));
+    const idx = 29 - Math.min(daysAgo, 29);
+    buckets[idx] += t.amount_usd;
+  });
+  return buckets.map((v, i) => {
+    const d = new Date(now - (29 - i) * 24 * 60 * 60 * 1000);
+    return { label: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }), value: v };
+  });
+}
+
+// ─── Overview Tab ───────────────────────────────────────────────────────────────
 function OverviewTab({ stats, trades }: { stats: Stats | null; trades: TradeRecord[] }) {
+  const [timeframe, setTimeframe] = useState<TimeFrame>("7d");
+  const [recentFilter, setRecentFilter] = useState<TradeFilter>("success");
+  const [perfFilter, setPerfFilter] = useState<TradeFilter>("success");
+  const [perfPage, setPerfPage] = useState(1);
+
   const fmtUSD = (n: number) => {
     if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
     if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
     return `$${n.toFixed(0)}`;
   };
 
-  const barVals = (() => {
-    if (!trades.length) return Array(12).fill(0);
-    const buckets = Array(12).fill(0);
-    trades.slice(-12).forEach((t, i) => { buckets[i] = t.amount_usd; });
-    return buckets;
-  })();
+  const buckets = buildVolumeBuckets(trades, timeframe);
+  const hasVolumeData = buckets.some(b => b.value > 0);
 
-  const recentTrades = trades.slice(0, 5);
+  const filteredRecent = (recentFilter === "success"
+    ? trades.filter(t => t.status === "executed")
+    : trades
+  ).slice(0, 5);
+
+  const PERF_PAGE_SIZE = 5;
+  const allPerf = perfFilter === "success"
+    ? trades.filter(t => t.status === "executed")
+    : trades;
+  const perfTotalPages = Math.max(1, Math.ceil(allPerf.length / PERF_PAGE_SIZE));
+  const filteredPerf = allPerf.slice((perfPage - 1) * PERF_PAGE_SIZE, perfPage * PERF_PAGE_SIZE);
+
+  const timeframes: TimeFrame[] = ["1d", "7d", "1m"];
 
   return (
     <div className="space-y-5 w-full">
@@ -229,121 +327,204 @@ function OverviewTab({ stats, trades }: { stats: Stats | null; trades: TradeReco
         />
       </div>
 
-      {/* Middle row: bar chart + recent trades */}
+      {/* Middle row: volume chart + recent trades */}
       <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4 w-full">
-        <div
-          className="rounded-xl border p-5"
-          style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
-        >
-          <p className="text-[10px] uppercase tracking-widest font-mono mb-4" style={{ color: "#CC5A38" }}>
-            Trade Volume History
-          </p>
-          <div className="min-h-[160px]">
-            {trades.length === 0 ? (
-              <div className="h-full flex items-end gap-[3%]">
-                {Array(12).fill(0).map((_, i) => (
-                  <div
-                    key={i}
-                    className="flex-1 rounded-sm opacity-10"
-                    style={{
-                      height: `${20 + Math.sin(i) * 15}%`,
-                      background: "linear-gradient(to top, #CC5A38, #e8855f)",
-                      minHeight: 4,
-                    }}
-                  />
-                ))}
+
+        {/* Trade Volume History — fixed height */}
+        <div className="rounded-xl border p-5 flex flex-col" style={{ borderColor: "#CC5A38", background: "#0a0a0a", height: 260 }}>
+          <div className="flex items-center justify-between mb-4 shrink-0">
+            <p className="text-[10px] uppercase tracking-widest font-mono" style={{ color: "#CC5A38" }}>
+              Trade Volume History
+            </p>
+            <div className="flex gap-1">
+              {timeframes.map(tf => (
+                <button
+                  key={tf}
+                  onClick={() => setTimeframe(tf)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase transition-all ${
+                    timeframe === tf ? "text-black" : "text-neutral-500 border border-neutral-700 hover:border-[#CC5A38] hover:text-[#CC5A38]"
+                  }`}
+                  style={timeframe === tf ? { background: "#CC5A38" } : {}}
+                >
+                  {tf}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex-1 relative min-h-0">
+            {!hasVolumeData ? (
+              <div className="flex flex-col items-center justify-center h-full gap-2">
+                <div className="flex items-end gap-[2px] w-full px-2" style={{ height: 80 }}>
+                  {buckets.map((_, i) => (
+                    <div
+                      key={i}
+                      className="flex-1 rounded-sm"
+                      style={{
+                        height: `${15 + Math.sin(i * 0.8) * 12 + 10}%`,
+                        background: "linear-gradient(to top, #CC5A38, #e8855f)",
+                        opacity: 0.07,
+                      }}
+                    />
+                  ))}
+                </div>
+                <p className="text-[10px] text-neutral-700 font-mono uppercase tracking-widest">
+                  No trades in this period
+                </p>
               </div>
             ) : (
-              <BarChart values={barVals} />
+              <div className="h-full">
+                <VolumeChart buckets={buckets} />
+              </div>
             )}
           </div>
         </div>
 
-        <div
-          className="rounded-xl border p-5"
-          style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
-        >
-          <p className="text-[10px] uppercase tracking-widest font-mono mb-4" style={{ color: "#CC5A38" }}>
-            Recent Trades
-          </p>
-          {recentTrades.length === 0 ? (
-            <EmptyState
-              icon={<TrendingUp size={22} style={{ color: "#CC5A38" }} />}
-              title="No trades yet"
-              subtitle="Your first trades will appear here once agents start trading."
-            />
-          ) : (
-            <div className="space-y-2">
-              {recentTrades.map((t) => (
-                <div key={t.trade_id} className="flex items-center justify-between">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-white font-mono truncate max-w-[180px]">{t.question || t.market_id}</p>
-                    <p className="text-[10px] text-neutral-500 font-mono">{t.side} · ${t.amount_usd.toFixed(0)}</p>
-                  </div>
-                  <span
-                    className={`text-[10px] font-mono font-bold ml-2 ${t.status === "executed" ? "text-green-400" : "text-red-400"}`}
-                  >
-                    {t.status.toUpperCase()}
-                  </span>
-                </div>
+        {/* Recent Trades — fixed height matching volume chart */}
+        <div className="rounded-xl border p-5 flex flex-col" style={{ borderColor: "#CC5A38", background: "#0a0a0a", height: 260 }}>
+          <div className="flex items-center justify-between mb-4 shrink-0">
+            <p className="text-[10px] uppercase tracking-widest font-mono" style={{ color: "#CC5A38" }}>
+              Recent Trades
+            </p>
+            <div className="flex gap-1">
+              {(["success", "all"] as TradeFilter[]).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setRecentFilter(f)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase transition-all ${
+                    recentFilter === f ? "text-black" : "text-neutral-500 border border-neutral-700 hover:border-[#CC5A38] hover:text-[#CC5A38]"
+                  }`}
+                  style={recentFilter === f ? { background: "#CC5A38" } : {}}
+                >
+                  {f}
+                </button>
               ))}
             </div>
-          )}
+          </div>
+          {/* Fixed-height content area — always 5 rows tall */}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {filteredRecent.length === 0 ? (
+              <div className="flex items-center justify-center h-full">
+                <EmptyState
+                  icon={<TrendingUp size={22} style={{ color: "#CC5A38" }} />}
+                  title={recentFilter === "success" ? "No executed trades" : "No trades yet"}
+                  subtitle="Executed trades appear here."
+                />
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {filteredRecent.map((t) => (
+                  <div key={t.trade_id} className="flex items-center justify-between py-2 border-b border-neutral-800/50 last:border-0">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-white font-mono truncate max-w-[180px]">{t.question || t.market_id}</p>
+                      <p className="text-[10px] text-neutral-500 font-mono">{t.side} · ${t.amount_usd.toFixed(0)}</p>
+                    </div>
+                    <span className={`text-[10px] font-mono font-bold ml-2 shrink-0 ${
+                      t.status === "executed" ? "text-green-400" : "text-red-400"
+                    }`}>
+                      {t.status.toUpperCase()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Trade Performance Table — full width */}
-      <div
-        className="rounded-xl border p-5 w-full"
-        style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
-      >
-        <p className="text-[10px] uppercase tracking-widest font-mono mb-4" style={{ color: "#CC5A38" }}>
-          Trade Performance
-        </p>
-        {trades.length === 0 ? (
-          <EmptyState
-            icon={<BarChart3 size={22} style={{ color: "#CC5A38" }} />}
-            title="No trades recorded yet"
-            subtitle="Trade performance metrics will appear here once your agents execute their first trades."
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs font-mono">
-              <thead>
-                <tr className="border-b" style={{ borderColor: "#CC5A38" }}>
-                  {["Trade Name", "Position Size", "Status", "Profit/Loss %", "Tx Hash"].map((h) => (
-                    <th key={h} className="text-left py-2 pr-4 text-[10px] uppercase tracking-widest" style={{ color: "#CC5A38" }}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {trades.slice(0, 8).map((t) => (
-                  <tr key={t.trade_id} className="border-b border-neutral-800 hover:bg-neutral-900/30">
-                    <td className="py-2.5 pr-4 text-white truncate max-w-[200px]">{t.question || t.market_id}</td>
-                    <td className="py-2.5 pr-4 text-neutral-300">${t.amount_usd.toFixed(2)}</td>
-                    <td className="py-2.5 pr-4">
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${t.status === "executed" ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"}`}>
-                        {t.status}
-                      </span>
-                    </td>
-                    <td className="py-2.5 pr-4 text-neutral-400">—</td>
-                    <td className="py-2.5">
-                      {t.split_tx ? (
-                        <a href={`https://polygonscan.com/tx/${t.split_tx}`} target="_blank" rel="noopener noreferrer" className="text-[#CC5A38] hover:underline">
-                          {t.split_tx.slice(0, 8)}…
-                        </a>
-                      ) : (
-                        <span className="text-neutral-600">—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* Trade Performance Table — fixed height with internal pagination */}
+      <div className="rounded-xl border p-5 w-full flex flex-col" style={{ borderColor: "#CC5A38", background: "#0a0a0a", height: 340 }}>
+        <div className="flex items-center justify-between mb-3 shrink-0">
+          <p className="text-[10px] uppercase tracking-widest font-mono" style={{ color: "#CC5A38" }}>
+            Trade Performance
+          </p>
+          <div className="flex items-center gap-3">
+            <div className="flex gap-1">
+              {(["success", "all"] as TradeFilter[]).map(f => (
+                <button
+                  key={f}
+                  onClick={() => { setPerfFilter(f); setPerfPage(1); }}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase transition-all ${
+                    perfFilter === f ? "text-black" : "text-neutral-500 border border-neutral-700 hover:border-[#CC5A38] hover:text-[#CC5A38]"
+                  }`}
+                  style={perfFilter === f ? { background: "#CC5A38" } : {}}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+            {/* Inline pagination */}
+            {perfTotalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPerfPage(p => Math.max(1, p - 1))}
+                  disabled={perfPage === 1}
+                  className="p-0.5 rounded hover:bg-neutral-800 disabled:opacity-30 transition-colors"
+                >
+                  <ChevronLeft size={12} className="text-neutral-400" />
+                </button>
+                <span className="text-[10px] font-mono text-neutral-500">{perfPage}/{perfTotalPages}</span>
+                <button
+                  onClick={() => setPerfPage(p => Math.min(perfTotalPages, p + 1))}
+                  disabled={perfPage === perfTotalPages}
+                  className="p-0.5 rounded hover:bg-neutral-800 disabled:opacity-30 transition-colors"
+                >
+                  <ChevronRight size={12} className="text-neutral-400" />
+                </button>
+              </div>
+            )}
           </div>
-        )}
+        </div>
+        {/* Fixed-height body */}
+        <div className="flex-1 min-h-0">
+          {filteredPerf.length === 0 ? (
+            <div className="flex items-center justify-center h-full">
+              <EmptyState
+                icon={<BarChart3 size={22} style={{ color: "#CC5A38" }} />}
+                title={perfFilter === "success" ? "No executed trades" : "No trades recorded yet"}
+                subtitle="Trade performance metrics appear here once agents execute trades."
+              />
+            </div>
+          ) : (
+            <div className="overflow-x-auto h-full">
+              <table className="w-full text-xs font-mono">
+                <thead>
+                  <tr className="border-b" style={{ borderColor: "#CC5A38" }}>
+                    {["Trade Name", "Position Size", "Status", "Profit/Loss %", "Tx Hash"].map((h) => (
+                      <th key={h} className="text-left py-2 pr-4 text-[10px] uppercase tracking-widest" style={{ color: "#CC5A38" }}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPerf.map((t) => (
+                    <tr key={t.trade_id} className="border-b border-neutral-800 hover:bg-neutral-900/30">
+                      <td className="py-2.5 pr-4 text-white truncate max-w-[200px]">{t.question || t.market_id}</td>
+                      <td className="py-2.5 pr-4 text-neutral-300">${t.amount_usd.toFixed(2)}</td>
+                      <td className="py-2.5 pr-4">
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                          t.status === "executed" ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"
+                        }`}>
+                          {t.status}
+                        </span>
+                      </td>
+                      <td className="py-2.5 pr-4 text-neutral-400">—</td>
+                      <td className="py-2.5">
+                        {t.split_tx ? (
+                          <a href={`https://polygonscan.com/tx/${t.split_tx}`} target="_blank" rel="noopener noreferrer" className="text-[#CC5A38] hover:underline">
+                            {t.split_tx.slice(0, 8)}…
+                          </a>
+                        ) : (
+                          <span className="text-neutral-600">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1124,6 +1305,14 @@ export default function DashboardPage() {
     fetch("/api/stats").then(r => r.json()).then(setStats).catch(() => null);
   }, []);
 
+  useEffect(() => {
+    fetch("/api/trades")
+      .then(r => r.json())
+      .then(data => { if (data.trades) setTrades(data.trades); })
+      .catch(() => null);
+  }, []);
+
+
   const handleLogout = async () => {
     await fetch(`${API_URL}/oauth/logout`, { method: "POST", credentials: "include" });
     window.location.href = "/";
@@ -1151,11 +1340,11 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="flex min-h-screen bg-[#0a0a0a] font-mono" style={{ color: "#E6E2D6" }}>
+    <div className="flex h-screen bg-[#0a0a0a] font-mono overflow-hidden" style={{ color: "#E6E2D6" }}>
 
       {/* ─── Sidebar ─── */}
       <aside
-        className="flex w-52 flex-col border-r shrink-0"
+        className="flex w-52 flex-col border-r shrink-0 h-screen sticky top-0 overflow-y-auto"
         style={{ borderColor: "#CC5A38", background: "#070707" }}
       >
         {/* Brand */}
@@ -1213,7 +1402,7 @@ export default function DashboardPage() {
       </aside>
 
       {/* ─── Main Content ─── */}
-      <main className="flex flex-1 flex-col min-h-screen overflow-auto min-w-0">
+      <main className="flex flex-1 flex-col h-screen overflow-hidden min-w-0">
         {/* Header */}
         <header
           className="flex items-center justify-between border-b px-8 py-5 shrink-0"
@@ -1243,7 +1432,7 @@ export default function DashboardPage() {
         </header>
 
         {/* Page Content */}
-        <div className="flex-1 p-8 w-full">
+        <div className="flex-1 overflow-y-auto p-8 w-full">
           {activeTab === "overview" && <OverviewTab stats={stats} trades={trades} />}
           {activeTab === "logs" && <LogsTab />}
           {activeTab === "trades" && <TradesTab trades={trades} />}
