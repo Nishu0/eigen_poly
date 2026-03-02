@@ -1,9 +1,49 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { useEffect, useState } from "react";
+
+interface Stats {
+  agents: number;
+  trades: number;
+  volume_usd: number;
+  open_positions: number;
+}
+
+function fmt(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+function fmtUSD(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
+  return `$${n.toFixed(0)}`;
+}
+
+function useStats() {
+  const [stats, setStats] = useState<Stats | null>(null);
+  useEffect(() => {
+    fetch("/api/stats")
+      .then((r) => r.json())
+      .then(setStats)
+      .catch(() => null);
+    const id = setInterval(() => {
+      fetch("/api/stats").then((r) => r.json()).then(setStats).catch(() => null);
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
+  return stats;
+}
 
 export function LandingUI() {
+  const stats = useStats();
+  const agentCount = stats ? fmt(stats.agents) : "—";
+  const tradeCount = stats ? fmt(stats.trades) : "—";
+  const volume = stats ? fmtUSD(stats.volume_usd) : "—";
+  const positions = stats ? fmt(stats.open_positions) : "—";
   return (
     <div className="ui-layer absolute inset-0 z-10 font-mono text-[#1a1a1a] flex flex-col pointer-events-none">
       
@@ -65,16 +105,16 @@ export function LandingUI() {
         {/* Right Data Block */}
         <div className="absolute right-6 md:right-12 lg:right-24 top-1/2 -translate-y-1/2 text-right text-[10px] md:text-xs leading-relaxed uppercase max-w-[200px] pointer-events-auto">
           <p className="mb-4">
-            LIQUIDITY: 10M+<br />
-            UPTIME: 99.9%<br />
-            AGENTS ACTIVE: 2.4K
+            VOLUME: {volume}<br />
+            TRADES: {tradeCount}<br />
+            AGENTS: {agentCount}
           </p>
           <Link href="/dashboard" className="font-bold border-b border-[#1a1a1a] pb-0.5 hover:text-[#CC5A38] hover:border-[#CC5A38] transition-colors inline-block pointer-events-auto">[LAUNCH APP]</Link>
         </div>
       </main>
 
       {/* Footer / Map Section */}
-      <div className="relative h-[25vh] md:h-[30vh] lg:h-[35vh] w-full mt-auto overflow-hidden">
+      <div className="relative h-[30vh] md:h-[35vh] lg:h-[40vh] w-full mt-auto overflow-hidden">
         {/* Mountains / Map graphic */}
         <div className="absolute bottom-0 left-0 w-full h-full pointer-events-none">
           <svg preserveAspectRatio="none" width="100%" height="100%" viewBox="0 0 1440 320" xmlns="http://www.w3.org/2000/svg">
@@ -83,7 +123,7 @@ export function LandingUI() {
           </svg>
         </div>
         
-        <div className="absolute inset-0 flex justify-between items-end p-6 md:p-10 uppercase text-[10px] md:text-xs text-[#E6E2D6] font-semibold mix-blend-difference">
+        <div className="absolute inset-0 flex justify-between items-end p-6 md:p-10 uppercase text-[10px] md:text-xs text-[#E6E2D6] font-semibold">
           <div>
             Eigen Cloud<br />
             Metengine<br />
@@ -95,11 +135,16 @@ export function LandingUI() {
             </div>
           </div>
           <div className="text-right">
-            <Link href="https://x.com/itsnishu" target="_blank" rel="noopener noreferrer">
-              Built<br />
-              by<br />
-              Nisarg
-            </Link>
+            <a
+              href="https://x.com/itsnishu"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="pointer-events-auto hover:text-white transition-colors"
+            >
+              BUILT<br />
+              BY<br />
+              NISARG
+            </a>
           </div>
         </div>
       </div>

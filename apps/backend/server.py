@@ -16,6 +16,7 @@ from routes.deposit import router as deposit_router
 from routes.export_key import router as export_key_router
 from routes.oauth import router as oauth_router
 from routes.device import router as device_router
+from routes.stats import router as stats_router
 
 
 @asynccontextmanager
@@ -52,6 +53,7 @@ app.include_router(deposit_router)
 app.include_router(export_key_router, tags=["Wallet"])
 app.include_router(oauth_router)
 app.include_router(device_router)
+app.include_router(stats_router, tags=["Stats"])
 
 
 @app.get("/health")

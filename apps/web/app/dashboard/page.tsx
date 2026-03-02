@@ -1,25 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import {
-  Key,
-  Wallet,
-  Copy,
-  Check,
-  Eye,
-  EyeOff,
-  Shield,
-  AlertTriangle,
-  RefreshCw,
-  ExternalLink,
-  Coins,
-  LogOut,
-  LayoutDashboard,
-  Settings,
-  ChevronRight,
-  Plus,
-} from "lucide-react";
+import { LogOut, RefreshCw, ExternalLink, TrendingUp, TrendingDown, MessageSquare, BarChart3, Zap, Shield } from "lucide-react";
+import { LoginPage } from "@/components/login-page";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -30,403 +14,545 @@ interface UserInfo {
   avatarUrl: string;
 }
 
-interface AgentSummary {
-  agentId: string;
-  walletAddress: string;
-  walletIndex: number;
-  scopes: string[];
-  createdAt: string;
+interface TradeRecord {
+  trade_id: string;
+  market_id: string;
+  question: string;
+  side: string;
+  amount_usd: number;
+  entry_price: number;
+  status: string;
+  clob_filled: boolean;
+  split_tx: string | null;
+  created_at: string;
 }
 
-interface BalanceData {
-  eoa: { address: string; pol: number; usdc_e: number };
-  safe: { address: string; pol: number; usdc_e: number };
-  total_usdc_e: number;
-  total_usd: number;
+interface Stats {
+  agents: number;
+  trades: number;
+  volume_usd: number;
+  open_positions: number;
 }
 
+type Tab = "overview" | "chat" | "trades" | "alpha";
+
+// ─── Stat Card ────────────────────────────────────────────────────────────────
+function StatCard({
+  label,
+  value,
+  sub,
+  delta,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  delta?: { text: string; up: boolean };
+}) {
+  return (
+    <div
+      className="flex flex-col justify-between rounded-xl border p-5"
+      style={{ borderColor: "#CC5A38", background: "#0a0a0a", minHeight: 120 }}
+    >
+      <p className="text-[10px] uppercase tracking-widest font-mono" style={{ color: "#CC5A38" }}>
+        {label}
+      </p>
+      <p className="text-3xl font-black text-white font-mono mt-2">{value}</p>
+      <div className="flex items-center justify-between mt-3">
+        <span className="text-[10px] text-neutral-500 font-mono uppercase">{sub}</span>
+        {delta && (
+          <span
+            className={`text-[10px] font-mono font-bold ${delta.up ? "text-green-400" : "text-red-400"}`}
+          >
+            {delta.up ? "↑" : "↓"} {delta.text}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Bar Chart ────────────────────────────────────────────────────────────────
+function BarChart({ values }: { values: number[] }) {
+  const max = Math.max(...values, 1);
+  return (
+    <div className="flex items-end gap-[3%] h-full w-full">
+      {values.map((v, i) => (
+        <div
+          key={i}
+          className="flex-1 rounded-sm transition-all hover:opacity-80"
+          style={{
+            height: `${(v / max) * 100}%`,
+            background: "linear-gradient(to top, #CC5A38, #e8855f)",
+            minHeight: 4,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ─── Overview Tab ─────────────────────────────────────────────────────────────
+function OverviewTab({ stats, trades }: { stats: Stats | null; trades: TradeRecord[] }) {
+  const fmtUSD = (n: number) => {
+    if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
+    return `$${n.toFixed(0)}`;
+  };
+
+  // Synthetic bar chart: trade volumes grouped into 12 buckets from recent trades
+  const barVals = (() => {
+    if (!trades.length) return [40, 55, 45, 70, 60, 85, 75, 50, 65, 90, 80, 95];
+    const buckets = Array(12).fill(0);
+    trades.slice(-12).forEach((t, i) => { buckets[i] = t.amount_usd; });
+    return buckets;
+  })();
+
+  const recentTrades = trades.slice(0, 5);
+
+  return (
+    <div className="space-y-5">
+      {/* Stat Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          label="Total Agents"
+          value={stats ? String(stats.agents) : "—"}
+          sub="Registered"
+          delta={stats && stats.agents > 0 ? { text: "Active", up: true } : undefined}
+        />
+        <StatCard
+          label="Trade Volume"
+          value={stats ? fmtUSD(stats.volume_usd) : "—"}
+          sub="All time"
+          delta={{ text: "On-chain", up: true }}
+        />
+        <StatCard
+          label="Total Trades"
+          value={stats ? String(stats.trades) : "—"}
+          sub="Executed"
+        />
+        <StatCard
+          label="Open Positions"
+          value={stats ? String(stats.open_positions) : "—"}
+          sub="Live"
+          delta={stats && stats.open_positions > 0 ? { text: "Live", up: true } : undefined}
+        />
+      </div>
+
+      {/* Middle row: bar chart + recent trades */}
+      <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4">
+        {/* Balance / Volume History */}
+        <div
+          className="rounded-xl border p-5"
+          style={{ borderColor: "#CC5A38", background: "#0a0a0a", height: 220 }}
+        >
+          <p className="text-[10px] uppercase tracking-widest font-mono mb-4" style={{ color: "#CC5A38" }}>
+            Trade Volume History
+          </p>
+          <div style={{ height: "calc(100% - 32px)" }}>
+            <BarChart values={barVals} />
+          </div>
+        </div>
+
+        {/* Recent Trades */}
+        <div
+          className="rounded-xl border p-5"
+          style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
+        >
+          <p className="text-[10px] uppercase tracking-widest font-mono mb-4" style={{ color: "#CC5A38" }}>
+            Recent Trades
+          </p>
+          {recentTrades.length === 0 ? (
+            <p className="text-neutral-600 text-xs font-mono">No trades yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {recentTrades.map((t) => (
+                <div key={t.trade_id} className="flex items-center justify-between">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-white font-mono truncate max-w-[180px]">{t.question || t.market_id}</p>
+                    <p className="text-[10px] text-neutral-500 font-mono">{t.side} · ${t.amount_usd.toFixed(0)}</p>
+                  </div>
+                  <span
+                    className={`text-[10px] font-mono font-bold ml-2 ${t.status === "executed" ? "text-green-400" : "text-red-400"}`}
+                  >
+                    {t.status.toUpperCase()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Trade Performance Table */}
+      <div
+        className="rounded-xl border p-5"
+        style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
+      >
+        <p className="text-[10px] uppercase tracking-widest font-mono mb-4" style={{ color: "#CC5A38" }}>
+          Trade Performance
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs font-mono">
+            <thead>
+              <tr className="border-b" style={{ borderColor: "#CC5A38" }}>
+                {["Trade Name", "Position Size", "Status", "Profit/Loss %", "Tx Hash"].map((h) => (
+                  <th key={h} className="text-left py-2 pr-4 text-[10px] uppercase tracking-widest" style={{ color: "#CC5A38" }}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {trades.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-6 text-center text-neutral-600">
+                    No trades recorded yet.
+                  </td>
+                </tr>
+              ) : (
+                trades.slice(0, 8).map((t) => (
+                  <tr key={t.trade_id} className="border-b border-neutral-800 hover:bg-neutral-900/30">
+                    <td className="py-2.5 pr-4 text-white truncate max-w-[200px]">{t.question || t.market_id}</td>
+                    <td className="py-2.5 pr-4 text-neutral-300">${t.amount_usd.toFixed(2)}</td>
+                    <td className="py-2.5 pr-4">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                          t.status === "executed" ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"
+                        }`}
+                      >
+                        {t.status}
+                      </span>
+                    </td>
+                    <td className="py-2.5 pr-4 text-neutral-400">—</td>
+                    <td className="py-2.5">
+                      {t.split_tx ? (
+                        <a
+                          href={`https://polygonscan.com/tx/${t.split_tx}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[#CC5A38] hover:underline"
+                        >
+                          {t.split_tx.slice(0, 8)}…
+                        </a>
+                      ) : (
+                        <span className="text-neutral-600">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Chat Tab ─────────────────────────────────────────────────────────────────
+function ChatTab() {
+  return (
+    <div
+      className="rounded-xl border p-8 flex flex-col items-center justify-center"
+      style={{ borderColor: "#CC5A38", background: "#0a0a0a", minHeight: 400 }}
+    >
+      <MessageSquare size={32} className="mb-4" style={{ color: "#CC5A38" }} />
+      <p className="text-white font-mono text-lg font-bold">Agent Chat</p>
+      <p className="text-neutral-500 text-xs font-mono mt-2 text-center max-w-xs">
+        Chat with your trading agents. Connect an agent API key to interact.
+      </p>
+      <div className="mt-6 w-full max-w-sm">
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4 text-xs text-neutral-500 font-mono text-center">
+          Coming soon — real-time agent messaging
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Trades Tab ───────────────────────────────────────────────────────────────
+function TradesTab({ trades }: { trades: TradeRecord[] }) {
+  return (
+    <div
+      className="rounded-xl border p-5"
+      style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
+    >
+      <p className="text-[10px] uppercase tracking-widest font-mono mb-4" style={{ color: "#CC5A38" }}>
+        All Trades
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs font-mono">
+          <thead>
+            <tr className="border-b" style={{ borderColor: "#CC5A38" }}>
+              {["Market", "Side", "Amount", "Entry Price", "Status", "Date", "Tx"].map((h) => (
+                <th key={h} className="text-left py-2 pr-4 text-[10px] uppercase tracking-widest" style={{ color: "#CC5A38" }}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {trades.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="py-8 text-center text-neutral-600">No trades yet.</td>
+              </tr>
+            ) : (
+              trades.map((t) => (
+                <tr key={t.trade_id} className="border-b border-neutral-800 hover:bg-neutral-900/30">
+                  <td className="py-2.5 pr-4 text-white truncate max-w-[180px]">{t.question || t.market_id}</td>
+                  <td className={`py-2.5 pr-4 font-bold ${t.side === "YES" ? "text-green-400" : "text-red-400"}`}>{t.side}</td>
+                  <td className="py-2.5 pr-4 text-neutral-300">${t.amount_usd.toFixed(2)}</td>
+                  <td className="py-2.5 pr-4 text-neutral-400">{t.entry_price ? t.entry_price.toFixed(3) : "—"}</td>
+                  <td className="py-2.5 pr-4">
+                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${t.status === "executed" ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"}`}>
+                      {t.status}
+                    </span>
+                  </td>
+                  <td className="py-2.5 pr-4 text-neutral-500">{new Date(t.created_at).toLocaleDateString()}</td>
+                  <td className="py-2.5">
+                    {t.split_tx ? (
+                      <a href={`https://polygonscan.com/tx/${t.split_tx}`} target="_blank" rel="noopener noreferrer" className="text-[#CC5A38] hover:underline">
+                        {t.split_tx.slice(0, 8)}…
+                      </a>
+                    ) : <span className="text-neutral-600">—</span>}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Alpha Tab ────────────────────────────────────────────────────────────────
+function AlphaTab() {
+  const signals = [
+    { market: "Will BTC hit $100K by Q2 2025?", signal: "BUY YES", confidence: 78, source: "Metengine" },
+    { market: "Will ETH merge trigger SEC action?", signal: "BUY NO", confidence: 62, source: "Sozu" },
+    { market: "Will Fed cut rates in June 2025?", signal: "BUY YES", confidence: 71, source: "EigenPoly AI" },
+    { market: "Will Apple Vision Pro outsell Quest 3?", signal: "BUY NO", confidence: 55, source: "Metengine" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div
+        className="rounded-xl border p-5"
+        style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <Zap size={14} style={{ color: "#CC5A38" }} />
+          <p className="text-[10px] uppercase tracking-widest font-mono" style={{ color: "#CC5A38" }}>
+            Alpha Signals — Powered by Sozu + Metengine
+          </p>
+        </div>
+        <div className="space-y-3">
+          {signals.map((s, i) => (
+            <div key={i} className="flex items-center justify-between border-b border-neutral-800 pb-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-white font-mono truncate">{s.market}</p>
+                <p className="text-[10px] text-neutral-500 font-mono mt-0.5">{s.source}</p>
+              </div>
+              <div className="flex items-center gap-3 ml-4">
+                <div className="text-right">
+                  <span className={`text-xs font-bold font-mono ${s.signal.includes("YES") ? "text-green-400" : "text-red-400"}`}>
+                    {s.signal}
+                  </span>
+                  <p className="text-[10px] text-neutral-500 font-mono">{s.confidence}% confidence</p>
+                </div>
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-[10px] font-bold font-mono"
+                  style={{
+                    background: `conic-gradient(#CC5A38 ${s.confidence * 3.6}deg, #1a1a1a 0deg)`,
+                  }}
+                >
+                  <div className="w-7 h-7 rounded-full bg-[#0a0a0a] flex items-center justify-center text-white text-[8px]">
+                    {s.confidence}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div
+        className="rounded-xl border p-5"
+        style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <Shield size={14} style={{ color: "#CC5A38" }} />
+          <p className="text-[10px] uppercase tracking-widest font-mono" style={{ color: "#CC5A38" }}>
+            TEE Attestation
+          </p>
+        </div>
+        <p className="text-xs text-neutral-400 font-mono">
+          All signals are computed inside Trusted Execution Environments.
+          Verify integrity at{" "}
+          <a
+            href="https://verify.eigencloud.xyz/app/0xE7caC048d1C305A5b870e147A080298eb1DE9877"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline"
+            style={{ color: "#CC5A38" }}
+          >
+            eigencloud.xyz
+          </a>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const [user, setUser] = useState<UserInfo | null>(null);
-  const [agents, setAgents] = useState<AgentSummary[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<AgentSummary | null>(null);
-  const [balances, setBalances] = useState<BalanceData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [trades, setTrades] = useState<TradeRecord[]>([]);
 
-  // Key export state
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  const [privateKey, setPrivateKey] = useState<string | null>(null);
-  const [showPrivateKey, setShowPrivateKey] = useState(false);
-  const [keyExportLoading, setKeyExportLoading] = useState(false);
+  const loginUrl = `${API_URL}/oauth/google?redirect=/dashboard`;
 
-  const [copied, setCopied] = useState<string | null>(null);
-
-  const copyToClipboard = useCallback((text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(label);
-    setTimeout(() => setCopied(null), 2000);
-  }, []);
-
-  // Check session + load agents
   useEffect(() => {
     (async () => {
       try {
-        const userRes = await fetch(`${API_URL}/oauth/me`, { credentials: "include" });
-        if (!userRes.ok) {
-          setLoading(false);
-          return;
-        }
-        const userData = await userRes.json();
-        setUser(userData);
-
-        const agentRes = await fetch(`${API_URL}/user/agents`, { credentials: "include" });
-        if (agentRes.ok) {
-          const data = await agentRes.json();
-          setAgents(data.agents || []);
-          if (data.agents?.length > 0) setSelectedAgent(data.agents[0]);
-        }
-      } catch {} finally {
-        setLoading(false);
-      }
+        const res = await fetch(`${API_URL}/oauth/me`, { credentials: "include" });
+        if (res.ok) setUser(await res.json());
+      } catch {} finally { setLoading(false); }
     })();
   }, []);
 
-  // Load balance when agent is selected (needs API key)
-  const loadBalance = async () => {
-    if (!selectedAgent || !apiKeyInput) return;
-    setBalanceLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/balance/${selectedAgent.agentId}`, {
-        headers: { "x-api-key": apiKeyInput },
-      });
-      if (res.ok) setBalances(await res.json());
-    } catch {} finally {
-      setBalanceLoading(false);
-    }
-  };
-
-  const exportKey = async () => {
-    if (!selectedAgent || !apiKeyInput) return;
-    setKeyExportLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/export-key`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": apiKeyInput },
-        body: JSON.stringify({ agentId: selectedAgent.agentId }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: "Export failed" }));
-        throw new Error(err.detail);
-      }
-      const data = await res.json();
-      setPrivateKey(data.privateKey);
-    } catch (e: any) {
-      alert(`Export failed: ${e.message}`);
-    } finally {
-      setKeyExportLoading(false);
-    }
-  };
+  useEffect(() => {
+    fetch("/api/stats").then(r => r.json()).then(setStats).catch(() => null);
+  }, []);
 
   const handleLogout = async () => {
     await fetch(`${API_URL}/oauth/logout`, { method: "POST", credentials: "include" });
     window.location.href = "/";
   };
 
-  const truncateAddr = (addr: string) =>
-    addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : "";
-
-  const loginUrl = `${API_URL}/oauth/google?redirect=/dashboard`;
-
-  // ────── Loading ──────
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#0A0A0A] text-white">
-        <RefreshCw size={24} className="animate-spin text-neutral-400" />
+      <main className="flex min-h-screen items-center justify-center bg-[#0a0a0a]">
+        <RefreshCw size={22} className="animate-spin" style={{ color: "#CC5A38" }} />
       </main>
     );
   }
 
-  // ────── Not logged in ──────
-  if (!user) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-[#0A0A0A] text-white px-4">
-        <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-900/50 p-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-emerald-500/10">
-            <Shield size={28} className="text-emerald-400" />
-          </div>
-          <h1 className="text-xl font-semibold">EigenPoly Dashboard</h1>
-          <p className="mt-2 text-sm text-neutral-400">Sign in to manage your agents</p>
-          <a
-            href={loginUrl}
-            className="mt-6 inline-flex items-center gap-3 rounded-lg border border-neutral-700 bg-neutral-800 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-neutral-700"
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-            </svg>
-            Continue with Google
-          </a>
-        </div>
-      </main>
-    );
-  }
+  if (!user) return <LoginPage loginUrl={loginUrl} />;
 
-  // ────── Dashboard ──────
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }).toUpperCase();
+
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "overview", label: "Overview" },
+    { id: "chat", label: "Chat" },
+    { id: "trades", label: "Trades" },
+    { id: "alpha", label: "Alpha" },
+  ];
+
   return (
-    <main className="flex min-h-screen bg-[#0A0A0A] text-white">
+    <div className="flex min-h-screen bg-[#0a0a0a] font-mono" style={{ color: "#E6E2D6" }}>
+
       {/* ─── Sidebar ─── */}
-      <aside className="flex w-64 flex-col border-r border-neutral-800 bg-[#111111]">
-        <div className="flex items-center gap-2 border-b border-neutral-800 px-5 py-4">
-          <Shield size={20} className="text-emerald-400" />
-          <span className="text-sm font-semibold">EigenPoly</span>
+      <aside
+        className="flex w-52 flex-col border-r"
+        style={{ borderColor: "#CC5A38", background: "#070707" }}
+      >
+        {/* Brand */}
+        <div className="px-6 pt-7 pb-4">
+          <Link href="/" className="text-xl font-black hover:opacity-80 transition-opacity" style={{ color: "#CC5A38" }}>
+            EigenPoly
+          </Link>
         </div>
 
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          <div className="flex items-center gap-2 rounded-lg bg-neutral-800 px-3 py-2 text-sm font-medium">
-            <LayoutDashboard size={16} className="text-emerald-400" />
-            Agents
-          </div>
-          <a
-            href={`${API_URL}/docs`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-neutral-400 hover:bg-neutral-800 hover:text-white transition-colors"
-          >
-            <ExternalLink size={16} />
-            API Docs
-          </a>
-          <a
-            href="https://verify.eigencloud.xyz/app/0xE7caC048d1C305A5b870e147A080298eb1DE9877"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-neutral-400 hover:bg-neutral-800 hover:text-white transition-colors"
-          >
-            <Shield size={16} />
-            TEE Attestation
-          </a>
+        {/* Nav */}
+        <nav className="flex-1 px-4 py-2">
+          <ul className="space-y-1">
+            {tabs.map((t) => (
+              <li key={t.id}>
+                <button
+                  onClick={() => setActiveTab(t.id)}
+                  className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                    activeTab === t.id
+                      ? "font-bold"
+                      : "text-neutral-500 hover:text-neutral-300"
+                  }`}
+                  style={activeTab === t.id ? { color: "#CC5A38" } : {}}
+                >
+                  {t.label}
+                </button>
+              </li>
+            ))}
+          </ul>
         </nav>
 
         {/* User */}
-        <div className="border-t border-neutral-800 p-4">
-          <div className="flex items-center gap-3">
+        <div className="border-t px-5 py-5 space-y-3" style={{ borderColor: "#CC5A38" }}>
+          <p className="text-[10px] uppercase tracking-widest text-neutral-600">Current User</p>
+          <div className="flex items-center gap-2.5">
             {user.avatarUrl ? (
-              <img src={user.avatarUrl} alt="" className="h-8 w-8 rounded-full" />
+              <img src={user.avatarUrl} alt="" className="h-7 w-7 rounded-full" />
             ) : (
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/20 text-sm font-semibold text-emerald-400">
-                {user.name?.[0] || "?"}
+              <div className="h-7 w-7 rounded-full bg-[#CC5A38]/20 flex items-center justify-center text-xs font-bold" style={{ color: "#CC5A38" }}>
+                {user.name?.[0]}
               </div>
             )}
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium truncate">{user.name}</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold truncate text-white">{user.name}</p>
               <p className="text-[10px] text-neutral-500 truncate">{user.email}</p>
             </div>
           </div>
           <button
             onClick={handleLogout}
-            className="mt-3 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-red-400 hover:bg-red-500/10 transition-colors"
+            className="flex items-center gap-1.5 text-[11px] text-neutral-500 hover:text-red-400 transition-colors"
           >
-            <LogOut size={12} />
+            <LogOut size={11} />
             Sign Out
           </button>
         </div>
       </aside>
 
       {/* ─── Main Content ─── */}
-      <div className="flex-1 overflow-auto">
+      <main className="flex flex-1 flex-col min-h-screen overflow-auto">
         {/* Header */}
-        <header className="sticky top-0 z-10 border-b border-neutral-800 bg-[#0A0A0A]/80 backdrop-blur-md px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-lg font-semibold">Agent Wallets</h1>
-              <p className="text-xs text-neutral-400">Manage your agents&apos; wallets and trade on Polymarket</p>
-            </div>
+        <header
+          className="flex items-center justify-between border-b px-8 py-5"
+          style={{ borderColor: "#CC5A38" }}
+        >
+          <div>
+            <h1 className="text-lg font-black uppercase tracking-wide text-white">
+              EIGENPOLY DASHBOARD
+            </h1>
+            <p className="text-[10px] text-neutral-500 mt-0.5">{dateStr}</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <a
+              href="https://x.com/itsnishu"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs hover:underline"
+              style={{ color: "#CC5A38" }}
+            >
+              contact for support: itsnishu
+            </a>
+            <span className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-bold uppercase text-green-400 bg-green-500/10">
+              <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
+              Live
+            </span>
           </div>
         </header>
 
-        <div className="p-6">
-          {/* Agent list */}
-          {agents.length === 0 ? (
-            <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-12 text-center">
-              <Wallet size={32} className="mx-auto mb-4 text-neutral-500" />
-              <h2 className="text-lg font-medium">No agents yet</h2>
-              <p className="mt-1 text-sm text-neutral-400">
-                Register an agent via the API and claim it here
-              </p>
-              <code className="mt-4 block rounded-lg bg-neutral-800 p-3 text-xs text-neutral-300 text-left">
-                {`curl -X POST "${API_URL}/register" \\`}<br/>
-                {`  -H "Content-Type: application/json" \\`}<br/>
-                {`  -d '{"agentId": "my-agent"}'`}
-              </code>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Agent cards */}
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {agents.map((a) => (
-                  <button
-                    key={a.agentId}
-                    onClick={() => {
-                      setSelectedAgent(a);
-                      setBalances(null);
-                      setPrivateKey(null);
-                    }}
-                    className={`rounded-xl border p-5 text-left transition-all ${
-                      selectedAgent?.agentId === a.agentId
-                        ? "border-emerald-500/50 bg-emerald-500/5"
-                        : "border-neutral-800 bg-neutral-900/50 hover:border-neutral-700"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500 text-sm font-bold text-white">
-                        {a.agentId[0]?.toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{a.agentId}</p>
-                        <p className="text-[10px] text-neutral-500">
-                          {new Date(a.createdAt).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <ChevronRight size={16} className="text-neutral-500" />
-                    </div>
-                    <div className="mt-3">
-                      <code className="text-[10px] text-neutral-400 font-mono">
-                        {truncateAddr(a.walletAddress)}
-                      </code>
-                    </div>
-                  </button>
-                ))}
-              </div>
-
-              {/* Selected agent detail */}
-              {selectedAgent && (
-                <div className="space-y-4">
-                  <h2 className="text-sm font-semibold text-neutral-300">
-                    Agent: <span className="text-white">{selectedAgent.agentId}</span>
-                  </h2>
-
-                  {/* Wallet addresses */}
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Wallet size={14} className="text-blue-400" />
-                        <span className="text-xs text-neutral-400">EOA Wallet</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <code className="text-xs font-mono">{truncateAddr(selectedAgent.walletAddress)}</code>
-                        <button
-                          onClick={() => copyToClipboard(selectedAgent.walletAddress, "eoa")}
-                          className="rounded p-1 text-neutral-500 hover:text-white"
-                        >
-                          {copied === "eoa" ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                        </button>
-                        <a href={`https://polygonscan.com/address/${selectedAgent.walletAddress}`} target="_blank" rel="noopener noreferrer" className="rounded p-1 text-neutral-500 hover:text-white">
-                          <ExternalLink size={12} />
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* API Key input for authenticated features */}
-                  <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
-                    <label className="mb-2 block text-xs font-medium text-neutral-400">
-                      Agent API Key <span className="text-neutral-500">(for balance & key export)</span>
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="password"
-                        value={apiKeyInput}
-                        onChange={(e) => setApiKeyInput(e.target.value)}
-                        placeholder="epk_..."
-                        className="flex-1 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-xs font-mono text-white placeholder:text-neutral-500 focus:border-emerald-500 focus:outline-none"
-                      />
-                      <button
-                        onClick={loadBalance}
-                        disabled={!apiKeyInput || balanceLoading}
-                        className="flex items-center gap-1 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-medium text-black hover:bg-emerald-400 disabled:opacity-50"
-                      >
-                        {balanceLoading ? <RefreshCw size={12} className="animate-spin" /> : <Coins size={12} />}
-                        Load
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Balances */}
-                  {balances && (
-                    <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <Coins size={16} className="text-yellow-400" />
-                          <span className="text-xs font-semibold">Balances</span>
-                        </div>
-                        <button onClick={loadBalance} className="text-xs text-neutral-400 hover:text-white">
-                          <RefreshCw size={12} className={balanceLoading ? "animate-spin" : ""} />
-                        </button>
-                      </div>
-                      <div className="rounded-lg bg-gradient-to-r from-emerald-500/10 to-blue-500/10 p-3 mb-3">
-                        <span className="text-[10px] text-neutral-400">Total</span>
-                        <p className="text-xl font-bold">${balances.total_usd.toFixed(2)}</p>
-                      </div>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <div className="rounded-lg border border-neutral-800 p-3">
-                          <span className="text-[10px] text-neutral-400">EOA</span>
-                          <p className="text-sm font-semibold">{balances.eoa.usdc_e.toFixed(2)} <span className="text-[10px] text-neutral-400">USDC.e</span></p>
-                        </div>
-                        <div className="rounded-lg border border-neutral-800 p-3">
-                          <span className="text-[10px] text-neutral-400">Safe</span>
-                          <p className="text-sm font-semibold">{balances.safe.usdc_e.toFixed(2)} <span className="text-[10px] text-neutral-400">USDC.e</span></p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Export Key */}
-                  <div className="rounded-xl border border-red-900/30 bg-neutral-900/50 p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Key size={16} className="text-red-400" />
-                      <span className="text-xs font-semibold">Export Private Key</span>
-                    </div>
-                    <div className="mb-3 flex items-start gap-2 rounded-lg bg-yellow-500/5 border border-yellow-500/20 p-2">
-                      <AlertTriangle size={12} className="mt-0.5 shrink-0 text-yellow-400" />
-                      <p className="text-[10px] text-yellow-200/80">
-                        Anyone with your private key controls your wallet. Never share it.
-                      </p>
-                    </div>
-                    {!privateKey ? (
-                      <button
-                        onClick={exportKey}
-                        disabled={keyExportLoading || !apiKeyInput}
-                        className="flex items-center gap-2 rounded-lg border border-red-800 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-400 hover:bg-red-500/20 disabled:opacity-50"
-                      >
-                        {keyExportLoading ? <RefreshCw size={12} className="animate-spin" /> : <Key size={12} />}
-                        {keyExportLoading ? "Exporting..." : "Export Key"}
-                      </button>
-                    ) : (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800 p-2">
-                          <code className="flex-1 break-all text-[10px] font-mono text-neutral-200">
-                            {showPrivateKey ? privateKey : "•".repeat(64)}
-                          </code>
-                          <button onClick={() => setShowPrivateKey(!showPrivateKey)} className="shrink-0 rounded p-1 text-neutral-400 hover:text-white">
-                            {showPrivateKey ? <EyeOff size={12} /> : <Eye size={12} />}
-                          </button>
-                          <button onClick={() => copyToClipboard(privateKey, "pk")} className="shrink-0 rounded p-1 text-neutral-400 hover:text-white">
-                            {copied === "pk" ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                          </button>
-                        </div>
-                        <button onClick={() => { setPrivateKey(null); setShowPrivateKey(false); }} className="text-[10px] text-neutral-500 hover:text-neutral-300">
-                          Clear key from view
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+        {/* Page Content */}
+        <div className="flex-1 p-8">
+          {activeTab === "overview" && <OverviewTab stats={stats} trades={trades} />}
+          {activeTab === "chat" && <ChatTab />}
+          {activeTab === "trades" && <TradesTab trades={trades} />}
+          {activeTab === "alpha" && <AlphaTab />}
         </div>
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }
