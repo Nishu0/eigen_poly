@@ -24,7 +24,14 @@ from lib.logging_middleware import AgentLogMiddleware
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup: init DB pool + schema. Shutdown: close pool."""
-    await init_db()
+    try:
+        await init_db()
+        print("Database connected")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"FAILED TO CONNECT TO DB: {e}")
+        print("Application continuing to start (unhealthy).")
     yield
     await close_db()
 
