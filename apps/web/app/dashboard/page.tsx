@@ -594,10 +594,10 @@ function LogsTab() {
   return (
     <div className="w-full space-y-4">
       <div
-        className="rounded-xl border p-5 w-full"
-        style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
+        className="rounded-xl border p-5 w-full flex flex-col"
+        style={{ borderColor: "#CC5A38", background: "#0a0a0a", minHeight: "calc(100vh - 156px)" }}
       >
-        {/* Header */}
+
         <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
           <div className="flex items-center gap-2">
             <Terminal size={14} style={{ color: "#CC5A38" }} />
@@ -653,11 +653,13 @@ function LogsTab() {
             <RefreshCw size={18} className="animate-spin" style={{ color: "#CC5A38" }} />
           </div>
         ) : logs.length === 0 ? (
-          <EmptyState
-            icon={<Activity size={24} style={{ color: "#CC5A38" }} />}
-            title="No logs yet"
-            subtitle="Every API route your agents hit will be recorded here in real-time."
-          />
+          <div className="flex-1 flex items-center justify-center py-16">
+            <EmptyState
+              icon={<Activity size={24} style={{ color: "#CC5A38" }} />}
+              title="No logs yet"
+              subtitle="Every API route your agents hit will be recorded here in real-time."
+            />
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs font-mono">
@@ -744,18 +746,21 @@ function LogsTab() {
 function TradesTab({ trades }: { trades: TradeRecord[] }) {
   return (
     <div
-      className="rounded-xl border p-5 w-full"
-      style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
+      className="rounded-xl border p-5 w-full flex flex-col"
+      style={{ borderColor: "#CC5A38", background: "#0a0a0a", minHeight: "calc(100vh - 156px)" }}
     >
-      <p className="text-[10px] uppercase tracking-widest font-mono mb-4" style={{ color: "#CC5A38" }}>
+      <p className="text-[10px] uppercase tracking-widest font-mono mb-4 shrink-0" style={{ color: "#CC5A38" }}>
         All Trades
       </p>
+
       {trades.length === 0 ? (
-        <EmptyState
-          icon={<BarChart3 size={24} style={{ color: "#CC5A38" }} />}
-          title="No trades yet"
-          subtitle="This table will populate once your registered agents execute trades on Polymarket."
-        />
+        <div className="flex-1 flex items-center justify-center py-16">
+          <EmptyState
+            icon={<BarChart3 size={24} style={{ color: "#CC5A38" }} />}
+            title="No trades yet"
+            subtitle="This table will populate once your registered agents execute trades on Polymarket."
+          />
+        </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs font-mono">
@@ -1141,22 +1146,24 @@ function AgentsTab() {
 
       {agents.length === 0 ? (
         <div
-          className="rounded-xl border p-8 w-full"
-          style={{ borderColor: "#CC5A38", background: "#0a0a0a" }}
+          className="rounded-xl border p-8 w-full flex flex-col items-center justify-center"
+          style={{ borderColor: "#CC5A38", background: "#0a0a0a", minHeight: "calc(100vh - 210px)" }}
         >
           <EmptyState
             icon={<Bot size={28} style={{ color: "#CC5A38" }} />}
             title="No agents registered yet"
             subtitle="Register an agent via the API to get started. Once claimed, your agents will appear here."
           />
-          <div className="mt-6 rounded-lg border border-neutral-800 bg-neutral-900/60 p-4 max-w-lg mx-auto">
-            <p className="text-[10px] uppercase tracking-widest font-mono mb-3" style={{ color: "#CC5A38" }}>Quick Start</p>
-            <code className="text-[11px] font-mono text-neutral-300 leading-relaxed block">
-              curl -X POST {API_URL}/register \<br />
-              {"  "}-H "Content-Type: application/json" \<br />
-              {"  "}-d '&#123;"agentId":"my-agent-1"&#125;'
-            </code>
-          </div>
+          <a
+            href="/skills.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-mono font-bold transition-all hover:opacity-80"
+            style={{ background: "#CC5A38", color: "#000" }}
+          >
+            <ExternalLink size={13} />
+            skills.md
+          </a>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 w-full">
