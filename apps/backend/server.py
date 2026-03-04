@@ -23,17 +23,33 @@ from lib.logging_middleware import AgentLogMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: init DB pool + schema. Shutdown: close pool."""
+    """Startup: init DB pool + schema + log public IP/region. Shutdown: close pool."""
+    # ── Log public IP and geo region ──────────────────────────────────────────
+    try:
+        import httpx as _httpx
+        async with _httpx.AsyncClient(timeout=5) as _c:
+            _geo = (await _c.get("https://ipinfo.io/json")).json()
+        print("=" * 60)
+        print(f"[STARTUP] Public IP   : {_geo.get('ip', 'unknown')}")
+        print(f"[STARTUP] Location    : {_geo.get('city')}, {_geo.get('region')}, {_geo.get('country')}")
+        print(f"[STARTUP] Org/ISP     : {_geo.get('org', 'unknown')}")
+        print(f"[STARTUP] Hostname    : {_geo.get('hostname', 'none')}")
+        print("=" * 60)
+    except Exception as _e:
+        print(f"[STARTUP] Could not fetch geo info: {_e}")
+
+    # ── Connect to database ───────────────────────────────────────────────────
     try:
         await init_db()
-        print("Database connected")
+        print("[STARTUP] Database connected")
     except Exception as e:
         import traceback
         traceback.print_exc()
-        print(f"FAILED TO CONNECT TO DB: {e}")
-        print("Application continuing to start (unhealthy).")
+        print(f"[STARTUP] FAILED TO CONNECT TO DB: {e}")
+        print("[STARTUP] Application continuing to start (unhealthy).")
     yield
     await close_db()
+
 
 
 app = FastAPI(
