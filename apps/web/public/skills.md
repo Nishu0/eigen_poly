@@ -260,3 +260,74 @@ curl -X POST "$EIGENPOLY_API_URL/deposit/quote" \
 - **EigenLayer backed** — cryptographic attestation proves code integrity
 - **USDC.e on Polygon** — safe uses bridged USDC (`0x2791...4174`)
 
+---
+
+## Polymarket Analytics (No Auth Required)
+
+Access live Polymarket analytics — top wallets, trading opportunities, and deep wallet analysis — through the EigenPoly API. The upstream data source is not exposed directly.
+
+**Base:** `https://api.eigenpoly.xyz/analytics`
+
+### Trading Opportunities
+
+```bash
+# List active opportunities (score ≥ 70)
+curl "$EIGENPOLY_API_URL/analytics/opportunities?status=active&minScore=70&limit=20"
+
+# Get a single opportunity
+curl "$EIGENPOLY_API_URL/analytics/opportunities/42"
+
+# Dismiss an opportunity
+curl -X POST "$EIGENPOLY_API_URL/analytics/opportunities/42/acknowledge"
+```
+
+**Response fields per opportunity:** `id`, `marketSlug`, `strategyType`, `opportunityScore`, `status`, `createdAt`, `market.question`
+
+**Strategy types:** `closing_soon` · `low_liquidity_high_volume` · `negrisk` · `new_active_markets` · `rapid_price_movement` · `related_markets_arbitrage` · `semantic_arbitrage`
+
+---
+
+### Wallet Analytics
+
+```bash
+# List top wallets sorted by PnL
+curl "$EIGENPOLY_API_URL/analytics/wallets?limit=20&sortBy=totalPnl&sortOrder=desc"
+
+# Deep analysis for a specific wallet
+curl "$EIGENPOLY_API_URL/analytics/wallets/0xABC123.../analyze"
+```
+
+**Wallet analysis fields:** `totalPnl`, `realizedPnl`, `unrealizedPnl`, `winRate`, `tradeCount`, `smartScore`, `convictionRate`, `volume24h`, `volumeAllTime`, `activeSince`
+
+---
+
+### Analytics Route Summary
+
+| Route | Auth | Description |
+|-------|------|-------------|
+| `GET /analytics/opportunities` | none | List opportunities (`strategy`, `minScore`, `status`, `limit`) |
+| `GET /analytics/opportunities/:id` | none | Single opportunity |
+| `POST /analytics/opportunities/:id/acknowledge` | none | Dismiss opportunity |
+| `GET /analytics/wallets` | none | Top wallets (`sortBy`, `sortOrder`, `limit`, `cursor`) |
+| `GET /analytics/wallets/:address/analyze` | none | Deep wallet analysis |
+
+### Recommended Agent Flow (Analytics → Trade)
+
+```bash
+# 1. Find a strong opportunity
+OPPS=$(curl -s "$EIGENPOLY_API_URL/analytics/opportunities?status=active&minScore=80&limit=5")
+MARKET_SLUG=$(echo $OPPS | jq -r '.[0].marketSlug')
+
+# 2. Check the market details
+curl "$EIGENPOLY_API_URL/markets/search?q=$MARKET_SLUG"
+
+# 3. Analyze top traders for signal confirmation
+curl "$EIGENPOLY_API_URL/analytics/wallets?limit=5&sortBy=smartScore&sortOrder=desc"
+
+# 4. Place the trade
+curl -X POST "$EIGENPOLY_API_URL/trade" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: $EIGENPOLY_API_KEY" \
+  -d '{"agentId": "my-agent-001", "marketId": "558960", "side": "YES", "amountUsd": 10}'
+```
+

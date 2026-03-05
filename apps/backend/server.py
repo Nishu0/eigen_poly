@@ -18,6 +18,7 @@ from routes.oauth import router as oauth_router
 from routes.device import router as device_router
 from routes.stats import router as stats_router
 from routes.logs import router as logs_router
+from routes.analytics import router as analytics_router
 from lib.logging_middleware import AgentLogMiddleware
 
 
@@ -80,6 +81,8 @@ app.include_router(oauth_router)
 app.include_router(device_router)
 app.include_router(stats_router, tags=["Stats"])
 app.include_router(logs_router, tags=["Logs"])
+app.include_router(analytics_router)
+
 
 # Add logging middleware (after routes are set up)
 app.add_middleware(AgentLogMiddleware)
