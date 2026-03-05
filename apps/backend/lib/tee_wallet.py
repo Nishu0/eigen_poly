@@ -93,3 +93,59 @@ def get_next_index_hint() -> int:
     The register route queries max(wallet_index) + 1 from the agents table.
     """
     return 0  # DB will provide the real value
+
+
+# ── Solana derivation ─────────────────────────────────────────────────────────
+
+def derive_solana_wallet(index: int) -> "SolanaWallet":
+    """Derive a Solana wallet from the TEE mnemonic.
+
+    Uses SLIP-0010 / BIP-44 path: m/44'/501'/0'/0'/{index}'
+    Returns base58-encoded private key + address (public key).
+    """
+    import hashlib, hmac, struct
+    from mnemonic import Mnemonic
+
+    mnemonic = _get_mnemonic()
+    if not mnemonic:
+        raise RuntimeError("No MNEMONIC available. Set MNEMONIC in .env for local dev.")
+
+    seed = Mnemonic.to_seed(mnemonic, passphrase="")
+
+    def _derive(seed: bytes, path: list[int]) -> bytes:
+        """SLIP-0010 hard derivation for ed25519."""
+        key = b"ed25519 seed"
+        I = hmac.new(key, seed, hashlib.sha512).digest()
+        kL, kR = I[:32], I[32:]
+        for idx in path:
+            data = b"\x00" + kL + struct.pack(">I", 0x80000000 | idx)
+            I = hmac.new(kR, data, hashlib.sha512).digest()
+            kL, kR = I[:32], I[32:]
+        return kL
+
+    # m/44'/501'/0'/0'/{index}'  — standard Solana path
+    seed_bytes = _derive(seed, [44, 501, 0, 0, index])
+
+    try:
+        from solders.keypair import Keypair  # official Solana Python SDK
+        keypair = Keypair.from_seed(seed_bytes)
+        # str(keypair) gives base58-encoded 64-byte secret (seed+pubkey) natively
+        privkey_b58 = str(keypair)
+        pubkey_str = str(keypair.pubkey())
+    except ImportError:
+        raise RuntimeError("Install solders (official Solana SDK): pip install solders")
+
+    return SolanaWallet(
+        address=pubkey_str,
+        private_key_b58=privkey_b58,
+        index=index,
+    )
+
+
+@dataclass
+class SolanaWallet:
+    """A Solana wallet derived from the TEE mnemonic."""
+    address: str          # base58 public key
+    private_key_b58: str  # base58-encoded 64-byte secret key (seed+pubkey)
+    index: int
+

@@ -331,3 +331,104 @@ curl -X POST "$EIGENPOLY_API_URL/trade" \
   -d '{"agentId": "my-agent-001", "marketId": "558960", "side": "YES", "amountUsd": 10}'
 ```
 
+---
+
+## MetEngine — Smart Money Intelligence
+
+Deep smart money analytics powered by [MetEngine](https://agent.metengine.xyz). Uses the **x402 pay-per-use protocol on Solana** — your TEE-derived Solana wallet pays automatically per request in USDC. No separate API key needed.
+
+**Base:** `https://api.eigenpoly.xyz/metengine`  
+**Auth:** `x-api-key` (your EigenPoly API key — Solana payment is handled automatically)
+
+> In production (EigenCloud TEE), the Solana key is derived from the same mnemonic as your EVM wallet at path `m/44'/501'/0'/0/{index}`. For local dev, set `METENGINE_SOLANA_KEY=<base58-private-key>` in `.env`.
+
+### Free Endpoints (No Payment, No Auth)
+
+```bash
+curl "$EIGENPOLY_API_URL/metengine/health"    # API status
+curl "$EIGENPOLY_API_URL/metengine/pricing"   # Endpoint pricing tiers
+```
+
+### Market Discovery
+
+```bash
+# Trending markets
+curl "$EIGENPOLY_API_URL/metengine/trending?timeframe=24h&sort_by=volume_spike&limit=20" \
+  -H "x-api-key: $EIGENPOLY_API_KEY"
+
+# Smart money opportunities
+curl "$EIGENPOLY_API_URL/metengine/opportunities?min_signal_strength=moderate&min_smart_wallets=3" \
+  -H "x-api-key: $EIGENPOLY_API_KEY"
+
+# Highest conviction markets
+curl "$EIGENPOLY_API_URL/metengine/high-conviction?min_smart_wallets=5&min_avg_score=65" \
+  -H "x-api-key: $EIGENPOLY_API_KEY"
+
+# Smart money intelligence for a specific market
+curl "$EIGENPOLY_API_URL/metengine/intelligence/0xCONDITION_ID?top_n_wallets=10" \
+  -H "x-api-key: $EIGENPOLY_API_KEY"
+
+# Whale trades (min $10k)
+curl "$EIGENPOLY_API_URL/metengine/whale-trades?min_usdc=10000&timeframe=24h" \
+  -H "x-api-key: $EIGENPOLY_API_KEY"
+```
+
+### Wallet Analytics
+
+```bash
+# Wallet profile + score
+curl "$EIGENPOLY_API_URL/metengine/wallet/0xWALLET" \
+  -H "x-api-key: $EIGENPOLY_API_KEY"
+
+# PnL breakdown
+curl "$EIGENPOLY_API_URL/metengine/wallet/0xWALLET/pnl?timeframe=90d" \
+  -H "x-api-key: $EIGENPOLY_API_KEY"
+
+# Top performers leaderboard
+curl "$EIGENPOLY_API_URL/metengine/top-performers?timeframe=7d&metric=pnl&limit=25" \
+  -H "x-api-key: $EIGENPOLY_API_KEY"
+
+# Alpha callers (early outcome predictors)
+curl "$EIGENPOLY_API_URL/metengine/alpha-callers?days_back=30&min_days_early=7" \
+  -H "x-api-key: $EIGENPOLY_API_KEY"
+```
+
+### MetEngine Route Summary
+
+| Route | Auth | Description |
+|-------|------|-------------|
+| `GET /metengine/health` | none | API health (free) |
+| `GET /metengine/pricing` | none | Endpoint pricing (free) |
+| `GET /metengine/trending` | `x-api-key` | Trending markets by volume/smart money |
+| `GET /metengine/opportunities` | `x-api-key` | Smart money opportunity scanner |
+| `GET /metengine/high-conviction` | `x-api-key` | Highest smart money conviction markets |
+| `GET /metengine/intelligence/:condition_id` | `x-api-key` | Deep market intelligence |
+| `GET /metengine/trades/:condition_id` | `x-api-key` | Recent trades (filterable) |
+| `GET /metengine/whale-trades` | `x-api-key` | Large trades across all markets |
+| `GET /metengine/wallet/:address` | `x-api-key` | Wallet profile + score |
+| `GET /metengine/wallet/:address/pnl` | `x-api-key` | Wallet PnL breakdown |
+| `GET /metengine/top-performers` | `x-api-key` | Leaderboard by PnL/score |
+| `GET /metengine/alpha-callers` | `x-api-key` | Early outcome callers |
+
+### Ultimate Agent Flow (MetEngine → Analytics → Trade)
+
+```bash
+# 1. Find high-conviction smart money opportunities
+OPPS=$(curl -s "$EIGENPOLY_API_URL/metengine/high-conviction?min_smart_wallets=5" \
+  -H "x-api-key: $EIGENPOLY_API_KEY")
+
+# 2. Deep dive into the top opportunity
+COND_ID=$(echo $OPPS | jq -r '.[0].conditionId')
+curl "$EIGENPOLY_API_URL/metengine/intelligence/$COND_ID" \
+  -H "x-api-key: $EIGENPOLY_API_KEY"
+
+# 3. Confirm with Sozu analytics (no x402 cost)
+curl "$EIGENPOLY_API_URL/analytics/opportunities?status=active&minScore=75"
+
+# 4. Place the trade
+curl -X POST "$EIGENPOLY_API_URL/trade" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: $EIGENPOLY_API_KEY" \
+  -d '{"agentId": "my-agent-001", "marketId": "558960", "side": "YES", "amountUsd": 25}'
+```
+
