@@ -66,11 +66,11 @@ interface AgentRecord {
   recentTrades?: TradeRecord[];
 }
 
-interface AlphaSignal {
+interface MarketSignal {
   market: string;
-  signal: "BUY YES" | "BUY NO";
+  signal: string;
   confidence: number;
-  source: "Sozu" | "EigenPoly" | "Metengine";
+  source: string;
   category: string;
   date: string;
 }
@@ -87,36 +87,8 @@ interface LogRecord {
   createdAt: string;
 }
 
-type Tab = "overview" | "logs" | "trades" | "alpha" | "agents";
+type Tab = "overview" | "logs" | "trades" | "markets" | "agents";
 
-// ─── Alpha signals data ───────────────────────────────────────────────────────
-const ALL_ALPHA_SIGNALS: AlphaSignal[] = [
-  { market: "Will BTC hit $100K by Q2 2025?", signal: "BUY YES", confidence: 78, source: "Metengine", category: "Crypto", date: "2025-03-01" },
-  { market: "Will ETH merge trigger SEC action?", signal: "BUY NO", confidence: 62, source: "Sozu", category: "Regulatory", date: "2025-03-01" },
-  { market: "Will Fed cut rates in June 2025?", signal: "BUY YES", confidence: 71, source: "EigenPoly", category: "Macro", date: "2025-03-01" },
-  { market: "Will Apple Vision Pro outsell Quest 3?", signal: "BUY NO", confidence: 55, source: "Metengine", category: "Tech", date: "2025-02-28" },
-  { market: "Will Solana ETF get SEC approval by 2025?", signal: "BUY YES", confidence: 67, source: "EigenPoly", category: "Crypto", date: "2025-02-28" },
-  { market: "Will OpenAI release GPT-5 before Google Gemini Ultra 2?", signal: "BUY YES", confidence: 58, source: "Sozu", category: "Tech", date: "2025-02-27" },
-  { market: "Will Ukraine–Russia ceasefire happen in H1 2025?", signal: "BUY NO", confidence: 44, source: "EigenPoly", category: "Geopolitics", date: "2025-02-27" },
-  { market: "Will SpaceX Starship complete orbital flight by June 2025?", signal: "BUY YES", confidence: 82, source: "Metengine", category: "Tech", date: "2025-02-26" },
-  { market: "Will S&P 500 exceed 6000 by EOY 2025?", signal: "BUY YES", confidence: 69, source: "Sozu", category: "Macro", date: "2025-02-26" },
-  { market: "Will DOGE be added to a major US exchange reserve?", signal: "BUY NO", confidence: 51, source: "EigenPoly", category: "Crypto", date: "2025-02-25" },
-  { market: "Will Trump implement 25% tariffs on Canada?", signal: "BUY YES", confidence: 73, source: "Metengine", category: "Geopolitics", date: "2025-02-25" },
-  { market: "Will Nvidia hit $200/share by Q3 2025?", signal: "BUY YES", confidence: 61, source: "Sozu", category: "Tech", date: "2025-02-24" },
-  { market: "Will a major bank fail in 2025?", signal: "BUY NO", confidence: 77, source: "EigenPoly", category: "Macro", date: "2025-02-24" },
-  { market: "Will XRP win its SEC lawsuit?", signal: "BUY YES", confidence: 66, source: "Metengine", category: "Regulatory", date: "2025-02-23" },
-  { market: "Will AI replace 20% of software jobs by 2026?", signal: "BUY YES", confidence: 54, source: "Sozu", category: "Tech", date: "2025-02-23" },
-  { market: "Will Polymarket volume exceed $5B in Q1 2025?", signal: "BUY YES", confidence: 80, source: "EigenPoly", category: "Crypto", date: "2025-02-22" },
-  { market: "Will China invade Taiwan by 2027?", signal: "BUY NO", confidence: 72, source: "Metengine", category: "Geopolitics", date: "2025-02-22" },
-  { market: "Will Bitcoin dominance exceed 65% by mid-2025?", signal: "BUY YES", confidence: 63, source: "Sozu", category: "Crypto", date: "2025-02-21" },
-  { market: "Will US inflation drop below 2.5% in 2025?", signal: "BUY YES", confidence: 57, source: "EigenPoly", category: "Macro", date: "2025-02-21" },
-  { market: "Will Microsoft acquire Palantir?", signal: "BUY NO", confidence: 48, source: "Metengine", category: "Tech", date: "2025-02-20" },
-  { market: "Will Ethereum hit $5000 by EOY 2025?", signal: "BUY YES", confidence: 60, source: "Sozu", category: "Crypto", date: "2025-02-20" },
-  { market: "Will Germany enter recession in 2025?", signal: "BUY YES", confidence: 65, source: "EigenPoly", category: "Macro", date: "2025-02-19" },
-  { market: "Will SEC approve spot Ethereum ETF options?", signal: "BUY YES", confidence: 74, source: "Metengine", category: "Regulatory", date: "2025-02-19" },
-  { market: "Will Anthropic raise valuation above $50B?", signal: "BUY YES", confidence: 70, source: "Sozu", category: "Tech", date: "2025-02-18" },
-  { market: "Will gold reach $3000/oz by mid-2025?", signal: "BUY YES", confidence: 76, source: "EigenPoly", category: "Macro", date: "2025-02-18" },
-];
 
 // ─── Shared Components ────────────────────────────────────────────────────────
 
@@ -803,20 +775,37 @@ function TradesTab({ trades }: { trades: TradeRecord[] }) {
   );
 }
 
-// ─── Alpha Tab ────────────────────────────────────────────────────────────────
-const ALPHA_PAGE_SIZE = 8;
+// ─── Markets Tab ───────────────────────────────────────────────────────────────
+const MARKET_PAGE_SIZE = 8;
 
-function AlphaTab() {
-  const [sourceFilter, setSourceFilter] = useState<"All" | "Sozu" | "EigenPoly" | "Metengine">("All");
+function MarketsTab() {
+  const [sourceFilter, setSourceFilter] = useState<"All" | "Sozu" | "EigenPoly">("All");
   const [page, setPage] = useState(1);
+  const [signals, setSignals] = useState<MarketSignal[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = ALL_ALPHA_SIGNALS.filter(
-    (s) => sourceFilter === "All" || s.source === sourceFilter
-  );
-  const totalPages = Math.ceil(filtered.length / ALPHA_PAGE_SIZE);
-  const pageSignals = filtered.slice((page - 1) * ALPHA_PAGE_SIZE, page * ALPHA_PAGE_SIZE);
+  useEffect(() => {
+    async function fetchSignals() {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/markets?source=${sourceFilter}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSignals(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch market signals", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchSignals();
+  }, [sourceFilter]);
 
-  const sources: Array<"All" | "Sozu" | "EigenPoly" | "Metengine"> = ["All", "Sozu", "EigenPoly", "Metengine"];
+  const totalPages = Math.ceil(signals.length / MARKET_PAGE_SIZE);
+  const pageSignals = signals.slice((page - 1) * MARKET_PAGE_SIZE, page * MARKET_PAGE_SIZE);
+
+  const sources: Array<"All" | "Sozu" | "EigenPoly"> = ["All", "Sozu", "EigenPoly"];
 
   return (
     <div className="space-y-4 w-full flex flex-col" style={{ minHeight: "calc(100vh - 180px)" }}>
@@ -826,7 +815,7 @@ function AlphaTab() {
           <div className="flex items-center gap-2">
             <Zap size={14} style={{ color: "#CC5A38" }} />
             <p className="text-[10px] uppercase tracking-widest font-mono" style={{ color: "#CC5A38" }}>
-              Alpha Signals — Powered by Sozu + Metengine
+              Live Markets & Opportunities
             </p>
           </div>
           {/* Source Filter */}
@@ -851,12 +840,16 @@ function AlphaTab() {
           </div>
         </div>
 
-        {/* Table */}
-        {pageSignals.length === 0 ? (
+        {/* Table / Loading State */}
+        {loading ? (
+          <div className="flex justify-center items-center py-16">
+            <RefreshCw size={24} className="animate-spin" style={{ color: "#CC5A38" }} />
+          </div>
+        ) : pageSignals.length === 0 ? (
           <EmptyState
             icon={<Zap size={24} style={{ color: "#CC5A38" }} />}
             title="No signals available"
-            subtitle="Alpha signals for the selected source will appear here."
+            subtitle="Market signals for the selected source will appear here."
           />
         ) : (
           <div className="overflow-x-auto">
@@ -877,7 +870,7 @@ function AlphaTab() {
                       <span className="truncate block">{s.market}</span>
                     </td>
                     <td className="py-3 pr-4">
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${s.signal.includes("YES") ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"}`}>
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${s.signal.includes("OPP") ? "bg-green-500/10 text-green-400" : "bg-neutral-500/10 text-neutral-400"}`}>
                         {s.signal}
                       </span>
                     </td>
@@ -910,7 +903,7 @@ function AlphaTab() {
         {totalPages > 1 && (
           <div className="flex items-center justify-between mt-5 pt-4 border-t border-neutral-800">
             <p className="text-[10px] text-neutral-500 font-mono">
-              Showing {(page - 1) * ALPHA_PAGE_SIZE + 1}–{Math.min(page * ALPHA_PAGE_SIZE, filtered.length)} of {filtered.length} signals
+              Showing {(page - 1) * MARKET_PAGE_SIZE + 1}–{Math.min(page * MARKET_PAGE_SIZE, signals.length)} of {signals.length} signals
             </p>
             <div className="flex items-center gap-2">
               <button
@@ -994,13 +987,23 @@ function ExportKeyModal({
   const doExport = async () => {
     setStep("loading");
     try {
-      // Note: export-key requires the agent's API key — which we don't have stored in the frontend.
-      // We'll call via the /export-key endpoint. In practice, the user would need to paste their API key.
-      // For now, we surface the endpoint and show a helpful message.
-      setError("Export key requires your agent's API key. Use: POST /export-key with your apiKey header.");
-      setStep("error");
-    } catch {
-      setError("Failed to export key. Please try again.");
+      const res = await fetch("/api/export-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: agent.agentId }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || errData.detail || "Failed to export key");
+      }
+      const data = await res.json();
+      setKeyData({
+        privateKey: data.privateKey,
+        walletAddress: data.walletAddress,
+      });
+      setStep("result");
+    } catch (err: any) {
+      setError(err.message || "Failed to export key. Please try again.");
       setStep("error");
     }
   };
@@ -1342,7 +1345,7 @@ export default function DashboardPage() {
     { id: "overview", label: "Overview" },
     { id: "logs", label: "Logs" },
     { id: "trades", label: "Trades" },
-    { id: "alpha", label: "Alpha" },
+    { id: "markets", label: "Markets" },
     { id: "agents", label: "Agents" },
   ];
 
@@ -1443,7 +1446,7 @@ export default function DashboardPage() {
           {activeTab === "overview" && <OverviewTab stats={stats} trades={trades} />}
           {activeTab === "logs" && <LogsTab />}
           {activeTab === "trades" && <TradesTab trades={trades} />}
-          {activeTab === "alpha" && <AlphaTab />}
+          {activeTab === "markets" && <MarketsTab />}
           {activeTab === "agents" && <AgentsTab />}
         </div>
       </main>

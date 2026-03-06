@@ -195,3 +195,37 @@ async def logout():
     response = Response(content='{"ok": true}', media_type="application/json")
     response.delete_cookie(COOKIE_NAME, path="/")
     return response
+
+
+@router.get("/user/agents")
+async def get_user_agents(request: Request):
+    """Return all agents claimed by the currently logged-in user (via session cookie)."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not logged in")
+
+    pool = get_pool()
+
+    # Get agents linked to this user via users_agents (or agents table user_id column)
+    # Get agents linked to this user via the owner_id column in the agents table
+    try:
+        rows = await pool.fetch(
+            "SELECT agent_id, wallet_address, wallet_index, created_at FROM agents WHERE owner_id = $1 ORDER BY created_at DESC",
+            user["sub"],
+        )
+    except Exception as e:
+        print(f"Error fetching user agents: {e}")
+        rows = []
+
+    agents = [
+        {
+            "agentId": r["agent_id"],
+            "walletAddress": r["wallet_address"],
+            "walletIndex": r["wallet_index"],
+            "createdAt": str(r["created_at"]),
+        }
+        for r in rows
+    ]
+
+    return {"agents": agents}
+

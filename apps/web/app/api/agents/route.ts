@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     // Forward session cookie so backend can identify the logged-in user
     const cookie = req.headers.get("cookie") || "";
 
-    const res = await fetch(`${BACKEND_URL}/user/agents`, {
+    const res = await fetch(`${BACKEND_URL}/oauth/user/agents`, {
       headers: { cookie },
       cache: "no-store",
     });
