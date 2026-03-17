@@ -38,6 +38,7 @@ GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 
 COOKIE_NAME = "eigenpoly_session"
 COOKIE_MAX_AGE = 7 * 24 * 3600  # 7 days
+COOKIE_DOMAIN = os.environ.get("COOKIE_DOMAIN", None)  # set to ".eigenpoly.xyz" in prod
 
 
 def _get_redirect_uri(request: Request) -> str:
@@ -165,6 +166,7 @@ async def google_callback(request: Request, code: str = "", state: str = "/dashb
         samesite="lax",
         secure=True,
         path="/",
+        domain=COOKIE_DOMAIN,
     )
     return response
 
@@ -193,7 +195,7 @@ async def get_me(request: Request):
 async def logout():
     """Clear session cookie."""
     response = Response(content='{"ok": true}', media_type="application/json")
-    response.delete_cookie(COOKIE_NAME, path="/")
+    response.delete_cookie(COOKIE_NAME, path="/", domain=COOKIE_DOMAIN)
     return response
 
 
