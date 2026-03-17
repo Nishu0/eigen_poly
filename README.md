@@ -79,7 +79,8 @@ the registration response includes a device code and a claim url. the user opens
 | GET | `/agents/{id}/positions` | session | positions with live pnl |
 | GET | `/agents/{id}/trades` | session | trade history |
 | GET | `/agents/{id}/pnl` | session | pnl summary |
-| GET | `/balance/{agent_id}` | session | eoa + safe balances |
+| PATCH | `/agents/{id}/flags` | api key | toggle auto_rebalance / auto_freemonies flags |
+| GET | `/balance/{agent_id}` | api key | multi-chain balances: polygon eoa+safe, solana vault, base eoa |
 
 ### markets
 | method | path | auth | description |
@@ -94,6 +95,7 @@ the registration response includes a device code and a claim url. the user opens
 |--------|------|-------------|
 | GET | `/metengine/health` | health check (free) |
 | GET | `/metengine/pricing` | pricing tiers (free) |
+| GET | `/metengine/capacity` | solana usdc balance + how many paid calls you can afford |
 | GET | `/metengine/trending` | markets with volume spikes and smart money activity |
 | GET | `/metengine/opportunities` | smart money opportunity scanner |
 | GET | `/metengine/high-conviction` | markets with highest smart money consensus |
@@ -104,6 +106,11 @@ the registration response includes a device code and a claim url. the user opens
 | GET | `/metengine/wallet/{address}/pnl` | pnl by position |
 | GET | `/metengine/top-performers` | top performing wallet leaderboard |
 | GET | `/metengine/alpha-callers` | wallets that called outcomes 7+ days early |
+
+### vaults
+| method | path | auth | description |
+|--------|------|------|-------------|
+| GET | `/vaults/base` | none | usdc vault apys on base: fluid, aave v3, compound v3, euler, morpho |
 
 ### sozu analytics
 | method | path | auth | description |
@@ -164,12 +171,15 @@ in production the mnemonic is injected by eigencompute kms and never leaves the 
 ```
 DATABASE_URL              postgresql://...
 CHAINSTACK_NODE           polygon mainnet rpc
+BASE_RPC_URL              base mainnet rpc (default: https://mainnet.base.org)
+SOLANA_RPC_URL            solana mainnet rpc (default: https://api.mainnet-beta.solana.com)
 OPENROUTER_API_KEY        llm api key
 MNEMONIC                  injected by tee in production, do not set manually
 POLYCLAW_PRIVATE_KEY      local dev fallback wallet
 GOOGLE_CLIENT_ID
 GOOGLE_CLIENT_SECRET
 JWT_SECRET                random secret for session cookies
+COOKIE_DOMAIN             .eigenpoly.xyz in prod, unset for local dev
 FRONTEND_URL              http://localhost:3000
 SOZU_BASE_URL             upstream sozu analytics url
 METENGINE_SOLANA_KEY      local dev fallback for solana x402 payments
@@ -210,7 +220,11 @@ uv run uvicorn server:app --host 127.0.0.1 --port 8000 --reload
 
 ### working
 
-- agent registration with tee-derived evm and solana wallets
+- agent registration with tee-derived evm wallet + solana vault (both returned in registration response)
+- multi-chain balance: polygon eoa+safe (pol + usdc.e), solana vault (sol + usdc), base eoa (eth + usdc) — with chain logos
+- `/metengine/capacity` — checks solana usdc balance and calculates how many x402 calls you can afford
+- `/vaults/base` — live usdc vault apys from defillama for fluid, aave v3, compound v3, euler, morpho on base
+- `auto_rebalance` and `auto_freemonies` per-agent boolean flags stored in DB, togglable via `PATCH /agents/{id}/flags`
 - google oauth device claim flow
 - on-chain trade execution (usdc split + clob sell) on polygon
 - position and trade storage with live pnl
@@ -226,9 +240,9 @@ uv run uvicorn server:app --host 127.0.0.1 --port 8000 --reload
 
 ### in progress
 
-- **auto invest — giza protocol yield** — per-agent flag (`auto_invest_giza`) to automatically deploy idle usdc into the giza protocol, targeting up to 15% apy. when enabled, any usdc sitting in the agent safe above a configurable floor gets deposited into giza after each trade cycle. withdrawals are triggered automatically when the agent needs collateral for a new trade.
+- **auto_rebalance flag** — per-agent boolean stored in DB. when enabled, idle usdc in the agent safe is automatically deployed into the highest-yield vault from `/vaults/base` (fluid, aave v3, compound v3, euler, morpho on base — typically 2-8% apy). the giza protocol is the primary target (up to 15% apy). withdrawals trigger automatically when the agent needs collateral. toggled via `PATCH /agents/{id}/flags` from the dashboard or via agent chat.
 
-- **auto invest — free monies (metengine)** — per-agent flag (`auto_invest_free_monies`) to automatically act on free money opportunities surfaced by metengine. when enabled, the agent polls `/metengine/opportunities` on each cycle, filters for high-conviction low-risk signals, and executes the trade without manual approval. powered by the same x402 metengine connection already wired in.
+- **auto_freemonies flag** — per-agent boolean stored in DB. when enabled, the agent polls `/metengine/opportunities` each cycle, filters for high-conviction safe markets, and executes small trades (2-6% expected yield) using the configured investment amount. the agent checks `/metengine/capacity` first — if solana usdc is too low to pay for the calls, it surfaces a funding prompt instead of failing silently. toggled via `PATCH /agents/{id}/flags` from the dashboard or via agent chat.
 
 ### not done
 

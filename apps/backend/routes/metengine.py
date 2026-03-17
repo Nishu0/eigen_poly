@@ -170,6 +170,48 @@ async def _get_solana_key(api_key: str) -> str:
     )
 
 
+# ── Solana USDC balance helper ────────────────────────────────────────────────
+
+SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+
+
+async def _get_solana_usdc_balance(address: str) -> dict:
+    """Check SOL + USDC balance on Solana mainnet for an address."""
+    rpc = os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            sol_resp = await client.post(rpc, json={
+                "jsonrpc": "2.0", "id": 1, "method": "getBalance",
+                "params": [address],
+            })
+            lamports = sol_resp.json().get("result", {}).get("value", 0)
+
+            tok_resp = await client.post(rpc, json={
+                "jsonrpc": "2.0", "id": 2,
+                "method": "getTokenAccountsByOwner",
+                "params": [address, {"mint": SOLANA_USDC_MINT}, {"encoding": "jsonParsed"}],
+            })
+            accounts = tok_resp.json().get("result", {}).get("value", [])
+            usdc = 0.0
+            if accounts:
+                usdc = float(
+                    accounts[0]["account"]["data"]["parsed"]["info"]["tokenAmount"]["uiAmount"] or 0
+                )
+            return {"sol": lamports / 1e9, "usdc": usdc, "address": address}
+    except Exception as e:
+        return {"sol": 0.0, "usdc": 0.0, "address": address, "error": str(e)}
+
+
+async def _get_agent_solana_address(api_key: str) -> str:
+    """Return the Solana vault address for an agent (no private key)."""
+    from lib.auth import hash_api_key
+    key_hash = hash_api_key(api_key)
+    agent = await store.get_agent_by_key_hash(key_hash)
+    if not agent:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+    return agent.solana_vault or ""
+
+
 # ── Free endpoints (no auth) ──────────────────────────────────────────────────
 
 @router.get("/health")
@@ -318,3 +360,68 @@ async def metengine_alpha_callers(
     key = await _get_solana_key(api_key)
     return await _fetch("GET", "/wallets/alpha-callers", key,
                         params={"days_back": days_back, "min_days_early": min_days_early, "min_bet_usdc": min_bet_usdc})
+
+
+# ── Capacity check ────────────────────────────────────────────────────────────
+
+@router.get("/capacity")
+async def metengine_capacity(api_key: str = Depends(require_api_key)):
+    """
+    Check your Solana USDC balance and calculate how many MetEngine calls you can afford.
+
+    Always call this before using paid MetEngine endpoints to avoid failed payments.
+    The auto_freemonies feature also uses this to gate execution.
+    """
+    solana_addr = await _get_agent_solana_address(api_key)
+    if not solana_addr:
+        raise HTTPException(status_code=503, detail="no solana vault address on record for this agent — re-register to get one")
+
+    balance = await _get_solana_usdc_balance(solana_addr)
+
+    # fetch pricing from metengine (free endpoint)
+    pricing = {}
+    try:
+        async with httpx.AsyncClient(timeout=8) as c:
+            r = await c.get(f"{METENGINE_BASE}/pricing")
+            if r.status_code == 200:
+                pricing = r.json()
+    except Exception:
+        pass
+
+    # estimate cost per call — metengine charges per endpoint
+    # use the lowest tier as a baseline for capacity calculation
+    cost_tiers = {}
+    calls_available = {}
+    usdc_balance = balance.get("usdc", 0.0)
+
+    if pricing:
+        endpoints = pricing.get("endpoints", pricing.get("tiers", {}))
+        for name, info in (endpoints.items() if isinstance(endpoints, dict) else {}):
+            cost = info.get("price_usdc", info.get("cost_usdc", 0)) if isinstance(info, dict) else 0
+            if cost and cost > 0:
+                cost_tiers[name] = cost
+                calls_available[name] = int(usdc_balance / cost)
+
+    # fallback estimate if pricing unavailable
+    if not cost_tiers:
+        estimated_cost_per_call = 0.01  # $0.01 USDC typical for metengine
+        calls_available["estimated"] = int(usdc_balance / estimated_cost_per_call)
+        cost_tiers["estimated"] = estimated_cost_per_call
+
+    min_calls = min(calls_available.values()) if calls_available else 0
+    low_balance = usdc_balance < 0.10
+
+    return {
+        "solana_address": solana_addr,
+        "sol_balance": balance.get("sol", 0.0),
+        "usdc_balance": usdc_balance,
+        "calls_available": calls_available,
+        "min_calls_across_endpoints": min_calls,
+        "cost_per_call_usdc": cost_tiers,
+        "low_balance_warning": low_balance,
+        "recommendation": (
+            f"fund {solana_addr} with USDC on solana mainnet (mint: {SOLANA_USDC_MINT})"
+            if low_balance else
+            f"balance sufficient for ~{min_calls} paid calls"
+        ),
+    }

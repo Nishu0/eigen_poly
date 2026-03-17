@@ -1,20 +1,14 @@
-"""Agent registration — register, get API key + TEE wallet + claim URL.
-
-Derives wallet from TEE mnemonic (or creates one for local dev).
-Computes Polymarket proxy/Safe wallet address on-chain.
-Creates a device code for human to claim via Google OAuth.
-"""
+"""Agent registration — register, get API key + TEE wallet + claim URL."""
 
 import os
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from web3 import Web3
 from eth_account import Account
 
 from lib.auth import generate_api_key, hash_api_key
 from lib.agent_store import AgentStore
-from lib.tee_wallet import derive_address, is_tee_mode
+from lib.tee_wallet import derive_address, derive_solana_wallet, is_tee_mode
 from lib.contracts import derive_polymarket_safe
 from routes.device import create_device_code
 
@@ -27,7 +21,7 @@ FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 
 class RegisterRequest(BaseModel):
     agentId: str
-    agentFirst: bool = True  # Agent gets API key immediately (recommended)
+    agentFirst: bool = True
 
 
 class RegisterResponse(BaseModel):
@@ -36,6 +30,7 @@ class RegisterResponse(BaseModel):
     apiKey: str
     walletAddress: str
     safeWalletAddress: str
+    solanaAddress: str
     walletType: str
     walletMode: str
     claimCode: str
@@ -47,7 +42,6 @@ class RegisterResponse(BaseModel):
 
 
 def _get_safe_address(eoa_address: str) -> str:
-    """Derive Polymarket Safe address using CREATE2 (no RPC needed)."""
     try:
         return derive_polymarket_safe(eoa_address)
     except Exception as e:
@@ -57,21 +51,15 @@ def _get_safe_address(eoa_address: str) -> str:
 
 @router.post("/register", response_model=RegisterResponse)
 async def register_agent(req: RegisterRequest):
-    """Register an agent — get API key + wallet + claim URL.
+    """Register an agent — get API key + EVM wallet + Solana vault + claim URL."""
 
-    Agent-first mode: API key returned immediately, human claims later
-    via the claim URL with Google OAuth.
-    """
-
-    # Check if already registered
     existing = await store.get_agent(req.agentId)
     if existing:
         raise HTTPException(status_code=409, detail=f"Agent '{req.agentId}' already registered")
 
-    # Get next wallet index
     wallet_index = await store.get_next_wallet_index()
 
-    # Derive or generate wallet
+    # derive EVM wallet
     if is_tee_mode():
         wallet_address = derive_address(wallet_index)
         wallet_mode = "tee"
@@ -80,22 +68,28 @@ async def register_agent(req: RegisterRequest):
         wallet_address = account.address
         wallet_mode = "local"
 
-    # Compute Polymarket Safe proxy wallet
-    safe_address = _get_safe_address(wallet_address)
+    # derive Solana vault from same MNEMONIC
+    solana_address = ""
+    if is_tee_mode():
+        try:
+            sol = derive_solana_wallet(wallet_index)
+            solana_address = sol.address
+        except Exception as e:
+            print(f"Warning: could not derive Solana wallet: {e}")
 
-    # Generate API key
+    safe_address = _get_safe_address(wallet_address)
     api_key = generate_api_key()
     key_hash = hash_api_key(api_key)
 
-    # Register agent
     agent = await store.register(
         agent_id=req.agentId,
         wallet_address=wallet_address,
         api_key_hash=key_hash,
         wallet_index=wallet_index,
+        polygon_safe=safe_address,
+        solana_vault=solana_address,
     )
 
-    # Create device code for human claim
     device = await create_device_code(req.agentId)
     claim_url = f"{FRONTEND_URL}/device?code={device['userCode']}"
 
@@ -105,27 +99,29 @@ async def register_agent(req: RegisterRequest):
         apiKey=api_key,
         walletAddress=wallet_address,
         safeWalletAddress=safe_address,
-        walletType="EOA + Safe",
+        solanaAddress=solana_address,
+        walletType="EOA + Safe + Solana vault",
         walletMode=wallet_mode,
         claimCode=device["userCode"],
         claimUrl=claim_url,
         deviceCode=device["deviceCode"],
         expiresIn=device["expiresIn"],
         fundingInfo={
-            "polygon_usdc_e": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
-            "warning": "Send USDC.e (bridged USDC) on Polygon to the EOA address",
-            "send_to": wallet_address,
-            "safe_wallet": safe_address,
-            "note": "CLOB trading uses EOA balance. Send funds to EOA, not Safe.",
+            "polygon_eoa": wallet_address,
+            "polygon_safe": safe_address,
+            "solana_vault": solana_address,
+            "usdc_e_contract": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+            "solana_usdc_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "note": "fund eoa for polymarket trading (usdc.e on polygon). fund solana vault for metengine x402 calls (usdc on solana mainnet).",
             "deposit_supported_assets": "GET /deposit/supported-assets",
             "deposit_address": "POST /deposit/address",
-            "min_deposit_usd": 1,
         },
         nextSteps=[
-            "1. Store your apiKey — it is shown only once",
-            f"2. Send the claim URL to the human owner: {claim_url}",
-            "3. Human opens the URL → Google login → Authorize",
-            "4. Fund wallet with USDC.e: GET /deposit/supported-assets",
-            "5. Start trading: POST /trade",
+            "1. store your apiKey — shown only once",
+            f"2. share the claim url with the agent owner: {claim_url}",
+            "3. owner opens url → google login → authorize",
+            "4. fund polygon eoa with usdc.e for trading: GET /deposit/supported-assets",
+            "5. fund solana vault with usdc for metengine x402 calls",
+            "6. start trading: POST /trade",
         ],
     )

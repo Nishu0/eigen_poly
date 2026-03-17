@@ -8,6 +8,7 @@ from lib.auth import require_api_key, hash_api_key
 from lib.agent_store import AgentStore
 from lib.position_storage import PositionStorage, TradeStorage
 from lib.gamma_client import GammaClient
+from typing import Optional as Opt
 
 
 router = APIRouter()
@@ -55,6 +56,41 @@ class PnLSummary(BaseModel):
     total_pnl_pct: float
     open_positions: int
     total_trades: int
+
+
+class FlagsUpdate(BaseModel):
+    auto_rebalance: Opt[bool] = None
+    auto_freemonies: Opt[bool] = None
+
+
+@router.patch("/agents/{agent_id}/flags")
+async def update_agent_flags(
+    agent_id: str,
+    body: FlagsUpdate,
+    api_key: str = Depends(require_api_key),
+):
+    """Toggle auto_rebalance and/or auto_freemonies flags for an agent.
+
+    Can be called from the dashboard or via agent chat.
+    auto_rebalance  — deploy idle usdc into giza protocol (up to 15% apy)
+    auto_freemonies — auto-invest in metengine high-conviction safe markets (2-6% yield)
+    """
+    key_hash = hash_api_key(api_key)
+    agent = await store.get_agent_by_key_hash(key_hash)
+    if not agent or agent.agent_id != agent_id:
+        raise HTTPException(status_code=403, detail="API key does not match agent")
+
+    await store.update_flags(
+        agent_id,
+        auto_rebalance=body.auto_rebalance,
+        auto_freemonies=body.auto_freemonies,
+    )
+    updated = await store.get_agent(agent_id)
+    return {
+        "agentId": agent_id,
+        "auto_rebalance": updated.auto_rebalance,
+        "auto_freemonies": updated.auto_freemonies,
+    }
 
 
 @router.get("/agents/{agent_id}/positions", response_model=list[PositionOut])

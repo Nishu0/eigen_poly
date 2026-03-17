@@ -1,6 +1,6 @@
 """Agent store — PostgreSQL-backed registration storage."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -19,6 +19,8 @@ class Agent:
     solana_vault: str
     scopes: list[str]
     created_at: str
+    auto_rebalance: bool = False
+    auto_freemonies: bool = False
 
 
 class AgentStore:
@@ -75,6 +77,25 @@ class AgentStore:
             created_at=now.isoformat(),
         )
 
+    async def update_flags(
+        self,
+        agent_id: str,
+        auto_rebalance: Optional[bool] = None,
+        auto_freemonies: Optional[bool] = None,
+    ) -> None:
+        """Toggle auto_rebalance / auto_freemonies flags for an agent."""
+        pool = get_pool()
+        if auto_rebalance is not None:
+            await pool.execute(
+                "UPDATE agents SET auto_rebalance = $1 WHERE agent_id = $2",
+                auto_rebalance, agent_id,
+            )
+        if auto_freemonies is not None:
+            await pool.execute(
+                "UPDATE agents SET auto_freemonies = $1 WHERE agent_id = $2",
+                auto_freemonies, agent_id,
+            )
+
     async def get_agent(self, agent_id: str) -> Optional[Agent]:
         """Lookup agent by ID."""
         pool = get_pool()
@@ -104,4 +125,6 @@ class AgentStore:
             solana_vault=row.get("solana_vault") or "",
             scopes=list(row["scopes"]) if row["scopes"] else [],
             created_at=row["created_at"].isoformat() if row["created_at"] else "",
+            auto_rebalance=bool(row.get("auto_rebalance", False)),
+            auto_freemonies=bool(row.get("auto_freemonies", False)),
         )

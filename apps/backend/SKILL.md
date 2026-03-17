@@ -1,20 +1,21 @@
 ---
 name: eigenpoly
-description: "Trade on Polymarket prediction markets. Browse markets, place bets, track positions with live P&L, manage balances. Polygon/Web3."
-metadata: {"openclaw":{"emoji":"🔮","homepage":"https://eigenpoly.com","primaryEnv":"EIGENPOLY_API_KEY","requires":{"env":["EIGENPOLY_API_KEY"]}}}
+description: "trade on polymarket prediction markets. browse markets, place bets, track positions with live p&l, check multi-chain balances (polygon/solana/base), access smart money analytics via metengine x402, check defi vault yields on base. eigencompute tee-secured."
+metadata: {"openclaw":{"emoji":"🔮","homepage":"https://eigenpoly.xyz","primaryEnv":"EIGENPOLY_API_KEY","requires":{"env":["EIGENPOLY_API_KEY"]}}}
 ---
 
-# EigenPoly
+# eigenpoly skill
 
-Polymarket prediction market trading skill. Browse markets, place bets (YES/NO), track positions with live P&L, and manage agent wallets.
+polymarket prediction market trading. browse markets, place bets (yes/no), track positions with live p&l, manage multi-chain balances, and access smart money analytics.
 
-## Standard credential storage (required)
+## credential storage
 
-Store the API key in **one canonical location**:
+store the api key in one canonical location:
 
-- `~/.eigenpoly/credentials.json`
+```
+~/.eigenpoly/credentials.json
+```
 
-Recommended file contents:
 ```json
 {
   "apiKey": "epk_...",
@@ -22,28 +23,27 @@ Recommended file contents:
 }
 ```
 
-Optional environment export (runtime convenience):
+optional env export:
 ```bash
 export EIGENPOLY_API_KEY="$(jq -r .apiKey ~/.eigenpoly/credentials.json)"
 ```
 
-## Base URL & Auth
+## base url and auth
 
-- Base URL: `https://backend-production-baaa.up.railway.app`
-- Auth header: `x-api-key: <EIGENPOLY_API_KEY>`
-- Content-Type: `application/json`
+- base url: `https://api.eigenpoly.xyz`
+- auth header: `x-api-key: <EIGENPOLY_API_KEY>`
+- content-type: `application/json`
 
-Quick env setup:
 ```bash
-export EIGENPOLY_API_URL="https://backend-production-baaa.up.railway.app"
+export EIGENPOLY_API_URL="https://api.eigenpoly.xyz"
 export EIGENPOLY_API_KEY="$(jq -r .apiKey ~/.eigenpoly/credentials.json)"
 ```
 
-## Getting Started
+---
 
-### 1. Register your agent
+## getting started
 
-Just provide a name. The server generates a wallet for you and manages all signing.
+### 1. register your agent
 
 ```bash
 curl -X POST "$EIGENPOLY_API_URL/register" \
@@ -51,165 +51,117 @@ curl -X POST "$EIGENPOLY_API_URL/register" \
   -d '{"agentId": "my-agent-001"}'
 ```
 
-**Response:**
+response:
 ```json
 {
   "status": "registered",
   "agentId": "my-agent-001",
   "apiKey": "epk_a1b2c3...",
-  "walletAddress": "0xAuto...Generated",
-  "credentialStore": "~/.eigenpoly/credentials.json"
+  "walletAddress": "0x...",
+  "safeWalletAddress": "0x...",
+  "solanaAddress": "8B9aLD...",
+  "walletType": "EOA + Safe + Solana vault",
+  "walletMode": "tee",
+  "claimCode": "ABCD-1234",
+  "claimUrl": "https://www.eigenpoly.xyz/device?code=ABCD-1234",
+  "fundingInfo": {
+    "polygon_eoa": "0x...",
+    "polygon_safe": "0x...",
+    "solana_vault": "8B9aLD...",
+    "note": "fund polygon eoa with usdc.e for trading. fund solana vault with usdc for metengine x402 calls."
+  }
 }
 ```
 
-> ⚠️ The `apiKey` is shown **once**. Store it immediately.
+the apiKey is shown **once**. store it immediately.
 
-### 2. Store your credentials
+three wallets are derived from the tee mnemonic:
+- **polygon eoa** — trading signer, fund with usdc.e on polygon
+- **polygon safe** — polymarket proxy wallet
+- **solana vault** — fund with usdc on solana mainnet for metengine x402 payments
+
+### 2. store credentials
 
 ```bash
 mkdir -p ~/.eigenpoly
 cat > ~/.eigenpoly/credentials.json <<EOF
-{
-  "apiKey": "epk_a1b2c3...",
-  "agentId": "my-agent-001"
-}
+{"apiKey": "epk_a1b2c3...", "agentId": "my-agent-001"}
 EOF
 chmod 600 ~/.eigenpoly/credentials.json
 ```
 
-### 3. Start trading
+### 3. claim the agent (link to google account)
 
-```bash
-# Search for markets
-curl "$EIGENPOLY_API_URL/markets/search?q=bitcoin"
-
-# Place a bet
-curl -X POST "$EIGENPOLY_API_URL/trade" \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: $EIGENPOLY_API_KEY" \
-  -d '{
-    "agentId": "my-agent-001",
-    "marketId": "558960",
-    "side": "YES",
-    "amountUsd": 10
-  }'
-```
+open the `claimUrl` from the registration response in a browser. sign in with google. the agent is now linked to the account and shows in the dashboard.
 
 ---
 
-## API Reference
+## api reference
 
-### Market Routes (No Auth Required)
+### registration
 
-#### `GET /markets/trending`
+#### `POST /register`
 
-Fetch trending Polymarket markets by 24h volume.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `limit` | int | 20 | Number of markets (1–100) |
-
-```bash
-curl "$EIGENPOLY_API_URL/markets/trending?limit=5"
-```
+| param | type | description |
+|-------|------|-------------|
+| `agentId` | string | unique name for this agent |
 
 ---
 
-#### `GET /markets/search?q={query}`
-
-Search markets by keyword.
-
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `q` | string | Yes | Search query |
-| `limit` | int | No | Results limit (default 20) |
-
-```bash
-curl "$EIGENPOLY_API_URL/markets/search?q=election&limit=10"
-```
-
----
-
-#### `GET /markets/{market_id}`
-
-Get full details for a single market.
-
-```bash
-curl "$EIGENPOLY_API_URL/markets/558960"
-```
-
-**Response includes:** `id`, `question`, `slug`, `yes_price`, `no_price`, `volume`, `volume_24h`, `liquidity`, `end_date`, `active`, `closed`, `resolved`, `outcome`.
-
----
-
-#### `GET /markets/analysis`
-
-Aggregate market analysis with liquidity scores and opportunity signals.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `limit` | int | 10 | Number of markets (1–50) |
-
-**Response includes per market:** `liquidity_score` (HIGH/MEDIUM/LOW), `opportunity_signal` (STRONG/MODERATE/VOLUME_SPIKE/NEUTRAL), `spread`.
-
----
-
-### Balance Route (Auth Required)
+### balance (multi-chain)
 
 #### `GET /balance/{agent_id}`
 
-Fetch aggregate per-chain balances.
+returns balances across all chains. always check this first before trading or using metengine.
 
 ```bash
 curl "$EIGENPOLY_API_URL/balance/my-agent-001" \
   -H "x-api-key: $EIGENPOLY_API_KEY"
 ```
 
-**Response:**
+response:
 ```json
 {
   "agentId": "my-agent-001",
-  "polygon": { "pol": 1.25, "usdc_e": 500.0 },
-  "solana": { "sol": 0.0, "vault_balance_usd": 0.0 },
-  "total_usd": 500.0
+  "polygon_eoa":  { "chain": "polygon", "chain_logo": "...", "address": "0x...", "native": 1.25, "native_symbol": "POL", "usdc": 500.0, "usdc_logo": "..." },
+  "polygon_safe": { "chain": "polygon", "chain_logo": "...", "address": "0x...", "native": 0.0, "native_symbol": "POL", "usdc": 0.0,   "usdc_logo": "..." },
+  "solana_vault": { "chain": "solana",  "chain_logo": "...", "address": "8B9...", "native": 0.05, "native_symbol": "SOL", "usdc": 2.5, "usdc_logo": "..." },
+  "base_eoa":     { "chain": "base",    "chain_logo": "...", "address": "0x...", "native": 0.0, "native_symbol": "ETH", "usdc": 0.0,   "usdc_logo": "..." },
+  "total_usdc": 502.5,
+  "flags": { "auto_rebalance": false, "auto_freemonies": false }
 }
 ```
 
 ---
 
-### Trade Route (Auth Required)
+### trading
 
 #### `POST /trade`
 
-Place a bet on a Polymarket prediction market. Executes a real on-chain trade: splits USDC into YES+NO tokens, sells the unwanted side via CLOB. Server signs all transactions.
+executes an on-chain trade: splits usdc into yes+no tokens, sells the unwanted side via clob.
 
-| Param | Type | Required | Description |
+| param | type | required | description |
 |-------|------|----------|-------------|
-| `agentId` | string | Yes | Your agent ID |
-| `marketId` | string | Yes | Polymarket market ID |
-| `side` | string | Yes | `"YES"` or `"NO"` |
-| `amountUsd` | float | Yes | USD amount to bet |
-| `skipClobSell` | bool | No | Skip selling unwanted side (default false) |
-| `riskConfig.maxSlippage` | float | No | Max slippage (default 0.05) |
+| `agentId` | string | yes | your agent id |
+| `marketId` | string | yes | polymarket market id |
+| `side` | string | yes | `"YES"` or `"NO"` |
+| `amountUsd` | float | yes | usd amount |
+| `skipClobSell` | bool | no | keep both token sides (default false) |
+| `riskConfig.maxSlippage` | float | no | max slippage (default 0.05) |
 
 ```bash
 curl -X POST "$EIGENPOLY_API_URL/trade" \
   -H "Content-Type: application/json" \
   -H "x-api-key: $EIGENPOLY_API_KEY" \
-  -d '{
-    "agentId": "my-agent-001",
-    "marketId": "558960",
-    "side": "YES",
-    "amountUsd": 10.0
-  }'
+  -d '{"agentId": "my-agent-001", "marketId": "558960", "side": "YES", "amountUsd": 10}'
 ```
 
-**Response:**
+response:
 ```json
 {
   "status": "executed",
-  "tradeId": "trd_abc123...",
-  "market": "Will X happen?",
+  "tradeId": "trd_abc123",
+  "market": "will X happen?",
   "side": "YES",
   "amountUsd": 10.0,
   "entryPrice": 0.72,
@@ -222,90 +174,292 @@ curl -X POST "$EIGENPOLY_API_URL/trade" \
 
 ---
 
-### Agent Routes (Auth Required)
+### agent routes
 
 #### `GET /agents/{agent_id}/positions`
 
-Get all positions with live P&L calculated from current Polymarket prices.
+positions with live p&l from current polymarket prices.
 
 ```bash
 curl "$EIGENPOLY_API_URL/agents/my-agent-001/positions" \
   -H "x-api-key: $EIGENPOLY_API_KEY"
 ```
 
-**Response includes per position:** `entry_price`, `current_price`, `pnl_usd`, `pnl_pct`, `status`.
+#### `GET /agents/{agent_id}/trades?limit=50`
 
----
-
-#### `GET /agents/{agent_id}/trades`
-
-Get full trade history.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `limit` | int | 50 | Max results (1–200) |
-
-```bash
-curl "$EIGENPOLY_API_URL/agents/my-agent-001/trades?limit=10" \
-  -H "x-api-key: $EIGENPOLY_API_KEY"
-```
-
----
+trade history. max limit 200.
 
 #### `GET /agents/{agent_id}/pnl`
 
-Get aggregate P&L summary.
+aggregate p&l summary.
 
-```bash
-curl "$EIGENPOLY_API_URL/agents/my-agent-001/pnl" \
-  -H "x-api-key: $EIGENPOLY_API_KEY"
-```
-
-**Response:**
 ```json
 {
   "agentId": "my-agent-001",
   "total_invested": 100.0,
-  "total_current_value": 115.50,
-  "total_pnl_usd": 15.50,
-  "total_pnl_pct": 15.50,
+  "total_current_value": 115.5,
+  "total_pnl_usd": 15.5,
+  "total_pnl_pct": 15.5,
   "open_positions": 3,
   "total_trades": 7
 }
 ```
 
+#### `PATCH /agents/{agent_id}/flags`
+
+toggle auto-invest flags. can be called from the dashboard or via agent chat.
+
+| flag | description |
+|------|-------------|
+| `auto_rebalance` | deploy idle usdc into giza protocol (up to 15% apy). auto-withdraws when collateral needed. |
+| `auto_freemonies` | poll metengine opportunities each cycle and auto-execute safe high-conviction trades (2-6% yield). checks solana usdc capacity before executing. |
+
+```bash
+# enable auto_freemonies
+curl -X PATCH "$EIGENPOLY_API_URL/agents/my-agent-001/flags" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: $EIGENPOLY_API_KEY" \
+  -d '{"auto_freemonies": true}'
+
+# enable auto_rebalance
+curl -X PATCH "$EIGENPOLY_API_URL/agents/my-agent-001/flags" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: $EIGENPOLY_API_KEY" \
+  -d '{"auto_rebalance": true}'
+```
+
+response:
+```json
+{"agentId": "my-agent-001", "auto_rebalance": true, "auto_freemonies": false}
+```
+
 ---
 
-## Route Summary
+### markets
 
-| Route | Method | Auth | Description |
+#### `GET /markets/trending?limit=20`
+
+trending polymarket markets by 24h volume.
+
+#### `GET /markets/search?q={query}&limit=20`
+
+keyword search.
+
+#### `GET /markets/{market_id}`
+
+full market details: `question`, `yes_price`, `no_price`, `volume`, `volume_24h`, `liquidity`, `end_date`, `active`, `resolved`, `outcome`.
+
+#### `GET /markets/analysis?limit=10`
+
+market analysis with per-market `liquidity_score` (HIGH/MEDIUM/LOW), `opportunity_signal` (STRONG/MODERATE/VOLUME_SPIKE/NEUTRAL), and `spread`.
+
+---
+
+### metengine — smart money analytics (x402 solana pay-per-use)
+
+every paid endpoint automatically charges your solana vault usdc via x402. check capacity first.
+
+**how x402 works:**
+1. request hits endpoint
+2. backend receives `402 payment required` with amount + solana recipient
+3. backend derives your solana vault key from tee mnemonic, broadcasts usdc transfer
+4. retries with `X-PAYMENT` header
+5. metengine validates and returns data
+
+**always check capacity before paid calls:**
+```bash
+curl "$EIGENPOLY_API_URL/metengine/capacity" \
+  -H "x-api-key: $EIGENPOLY_API_KEY"
+```
+
+response:
+```json
+{
+  "solana_address": "8B9aLD...",
+  "sol_balance": 0.05,
+  "usdc_balance": 2.5,
+  "calls_available": {"trending": 25, "intelligence": 10},
+  "min_calls_across_endpoints": 10,
+  "low_balance_warning": false,
+  "recommendation": "balance sufficient for ~10 paid calls"
+}
+```
+
+if `low_balance_warning` is true, fund the solana vault before proceeding:
+- address: the `solana_address` from the response
+- send usdc on solana mainnet (mint: `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`)
+
+#### `GET /metengine/health` (free)
+#### `GET /metengine/pricing` (free — shows per-endpoint cost)
+
+#### `GET /metengine/trending?timeframe=24h&sort_by=volume_spike&limit=20`
+
+markets with volume spikes and smart money inflow.
+
+#### `GET /metengine/opportunities?min_signal_strength=&min_smart_wallets=`
+
+smart money opportunity scanner. use this for `auto_freemonies` signal source.
+
+#### `GET /metengine/high-conviction?min_smart_wallets=5&min_avg_score=65`
+
+markets where multiple smart wallets agree.
+
+#### `GET /metengine/intelligence/{condition_id}?top_n_wallets=10`
+
+deep smart money analysis for a single market.
+
+#### `GET /metengine/trades/{condition_id}?timeframe=24h&smart_money_only=false`
+
+recent trades for a market.
+
+#### `GET /metengine/whale-trades?min_usdc=10000&timeframe=24h`
+
+whale trades ($10k+ by default) across all markets.
+
+#### `GET /metengine/wallet/{address}`
+
+wallet score, stats, and open positions.
+
+#### `GET /metengine/wallet/{address}/pnl?timeframe=90d`
+
+pnl breakdown by position.
+
+#### `GET /metengine/top-performers?timeframe=7d&metric=pnl&limit=25`
+
+top performing wallet leaderboard.
+
+#### `GET /metengine/alpha-callers?days_back=30&min_days_early=7&min_bet_usdc=100`
+
+wallets that called outcomes 7+ days before resolution.
+
+---
+
+### vaults — base defi usdc yields
+
+#### `GET /vaults/base?min_tvl=1000000&min_apy=0`
+
+current usdc vault apys on base: fluid, aave v3, compound v3, euler, morpho. sorted by apy descending.
+
+```bash
+curl "$EIGENPOLY_API_URL/vaults/base"
+```
+
+response:
+```json
+{
+  "chain": "base",
+  "best_apy": 7.2,
+  "best_protocol": "Fluid",
+  "total_checked": 5,
+  "vaults": [
+    {
+      "protocol": "Fluid",
+      "protocol_slug": "fluid",
+      "symbol": "USDC",
+      "chain": "base",
+      "apy": 7.2,
+      "apy_base": 5.1,
+      "apy_reward": 2.1,
+      "tvl_usd": 45000000,
+      "il_risk": "none"
+    }
+  ]
+}
+```
+
+use this alongside `auto_rebalance` to understand where idle usdc is being deployed.
+
+---
+
+### analytics (sozu proxy)
+
+#### `GET /analytics/opportunities`
+#### `GET /analytics/opportunities/{id}`
+#### `POST /analytics/opportunities/{id}/acknowledge`
+#### `GET /analytics/wallets`
+#### `GET /analytics/wallets/{address}/analyze`
+
+---
+
+### deposit
+
+#### `GET /deposit/supported-assets`
+
+chains and tokens supported for cross-chain deposit.
+
+#### `POST /deposit/address`
+
+create a deposit address for a specific chain.
+
+#### `POST /deposit/quote`
+
+get a bridge quote.
+
+#### `GET /deposit/info`
+
+quick funding reference.
+
+---
+
+### misc
+
+#### `GET /stats` (public)
+
+platform stats: total agents, trades, volume, open positions.
+
+#### `GET /health` (public)
+
+`{"ok": true}`
+
+---
+
+## agent trading flow
+
+1. **register** — `POST /register` — get api key + polygon eoa + solana vault
+2. **fund** — send usdc.e to polygon eoa for trading, usdc to solana vault for metengine
+3. **check capacity** — `GET /metengine/capacity` — confirm solana usdc before paid calls
+4. **find markets** — `GET /markets/search?q=...` or `GET /metengine/opportunities`
+5. **analyze** — `GET /markets/analysis` or `GET /metengine/intelligence/{id}`
+6. **trade** — `POST /trade` with marketId + side + amount
+7. **monitor** — `GET /agents/{id}/positions` for live p&l
+8. **auto-invest** — `PATCH /agents/{id}/flags` to enable `auto_rebalance` or `auto_freemonies`
+9. **vault yields** — `GET /vaults/base` to see where auto_rebalance is parking usdc
+
+## route summary
+
+| route | method | auth | description |
 |-------|--------|------|-------------|
-| `/register` | POST | none | Register agent (just a name), get API key |
-| `/balance/{agent_id}` | GET | `x-api-key` | Per-chain balances |
-| `/trade` | POST | `x-api-key` | Place a bet on Polymarket |
-| `/agents/{agent_id}/positions` | GET | `x-api-key` | Positions with live P&L |
-| `/agents/{agent_id}/trades` | GET | `x-api-key` | Trade history |
-| `/agents/{agent_id}/pnl` | GET | `x-api-key` | P&L summary |
-| `/markets/trending` | GET | none | Trending markets |
-| `/markets/search` | GET | none | Search markets |
-| `/markets/{market_id}` | GET | none | Market details |
-| `/markets/analysis` | GET | none | Market analysis + signals |
-| `/health` | GET | none | Health check |
-| `/docs` | GET | none | Interactive Swagger UI |
+| `/register` | POST | none | register agent, get api key + evm + solana wallets |
+| `/balance/{id}` | GET | x-api-key | multi-chain: polygon eoa+safe, solana vault, base eoa |
+| `/trade` | POST | x-api-key | place bet on polymarket |
+| `/agents/{id}/positions` | GET | x-api-key | positions with live p&l |
+| `/agents/{id}/trades` | GET | x-api-key | trade history |
+| `/agents/{id}/pnl` | GET | x-api-key | p&l summary |
+| `/agents/{id}/flags` | PATCH | x-api-key | toggle auto_rebalance / auto_freemonies |
+| `/markets/trending` | GET | none | trending markets |
+| `/markets/search` | GET | none | search markets |
+| `/markets/{id}` | GET | none | market details |
+| `/markets/analysis` | GET | x-api-key | market signals |
+| `/metengine/capacity` | GET | x-api-key | solana usdc balance + call capacity |
+| `/metengine/trending` | GET | x-api-key + x402 | smart money trending markets |
+| `/metengine/opportunities` | GET | x-api-key + x402 | opportunity scanner |
+| `/metengine/high-conviction` | GET | x-api-key + x402 | high conviction markets |
+| `/metengine/intelligence/{id}` | GET | x-api-key + x402 | deep market intelligence |
+| `/metengine/trades/{id}` | GET | x-api-key + x402 | market trades |
+| `/metengine/whale-trades` | GET | x-api-key + x402 | whale trades |
+| `/metengine/wallet/{addr}` | GET | x-api-key + x402 | wallet profile |
+| `/metengine/top-performers` | GET | x-api-key + x402 | top wallets leaderboard |
+| `/metengine/alpha-callers` | GET | x-api-key + x402 | early callers |
+| `/vaults/base` | GET | none | base defi usdc vault apys |
+| `/analytics/opportunities` | GET | session | sozu opportunities |
+| `/analytics/wallets/{addr}/analyze` | GET | session | wallet analytics |
+| `/deposit/supported-assets` | GET | none | supported deposit chains |
+| `/stats` | GET | none | platform stats |
+| `/health` | GET | none | health check |
 
-## Agent Trading Flow
+## security
 
-1. **Register** — just pass your name: `POST /register`
-2. **Search** — find markets: `GET /markets/search?q=bitcoin`
-3. **Analyze** — check liquidity/signals: `GET /markets/analysis`
-4. **Bet** — place a trade: `POST /trade` with marketId + side + amount
-5. **Monitor** — check positions: `GET /agents/{id}/positions` (includes live P&L)
-6. **Review** — check overall performance: `GET /agents/{id}/pnl`
-
-## Security
-
-- **Wallet keys are AES-encrypted** at rest — master key lives only in env vars, never in the DB
-- A database leak alone cannot expose wallet private keys
-- API keys are SHA-256 hashed before storage — raw keys never persisted
-- All trade/balance/position routes require valid `x-api-key` header
-- Server manages all wallet signing — agents never touch private keys
+- wallet keys are tee-derived from mnemonic injected by eigencompute kms — never written to disk
+- api keys are sha-256 hashed before db storage — raw key shown only at registration
+- `auto_rebalance` and `auto_freemonies` flags can only be toggled by the agent api key holder or the dashboard owner — not publicly settable
+- solana private key is derived in-memory for x402 payments and never stored or logged

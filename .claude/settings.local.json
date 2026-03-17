@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(PGPASSWORD=npg_O64MJFjvSfqy psql \"postgresql://neondb_owner@ep-orange-block-a8yfdtmk-pooler.eastus2.azure.neon.tech/neondb?sslmode=require\" -c \"TRUNCATE agent_logs, positions, trades, device_codes, agents, users CASCADE;\" 2>&1)",
+      "Bash(python -c \":*)",
+      "Bash(.venv/bin/python -c \":*)"
+    ]
+  }
+}

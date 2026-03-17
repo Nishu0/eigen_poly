@@ -1,6 +1,10 @@
-"""Balance route — fetch EOA + Safe wallet balances for an agent."""
+"""Balance route — multi-chain balances: Polygon EOA+Safe, Solana vault, Base EOA."""
 
 import os
+import asyncio
+from typing import Optional
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from web3 import Web3
@@ -13,81 +17,151 @@ from lib.contracts import CONTRACTS, ERC20_ABI, derive_polymarket_safe
 router = APIRouter()
 store = AgentStore()
 
+CHAIN_LOGOS = {
+    "polygon": "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/polygon/info/logo.png",
+    "solana":  "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/solana/info/logo.png",
+    "base":    "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/info/logo.png",
+}
+USDC_LOGO = "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/binance/assets/USDC-CD2/logo.png"
 
-class WalletBalance(BaseModel):
+BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+SOLANA_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+
+
+class ChainBalance(BaseModel):
+    chain: str
+    chain_logo: str
     address: str
-    pol: float
-    usdc_e: float
+    native: float
+    native_symbol: str
+    usdc: float
+    usdc_logo: str = USDC_LOGO
 
 
 class BalanceResponse(BaseModel):
     agentId: str
-    eoa: WalletBalance
-    safe: WalletBalance
-    total_usdc_e: float
-    total_usd: float
+    polygon_eoa: ChainBalance
+    polygon_safe: ChainBalance
+    solana_vault: ChainBalance
+    base_eoa: ChainBalance
+    total_usdc: float
+    flags: dict
 
 
-def _get_balances(rpc_url: str, address: str) -> WalletBalance:
-    """Get POL and USDC.e balances for an address on Polygon."""
+# ── chain helpers ─────────────────────────────────────────────────────────────
+
+def _evm_balance(rpc_url: str, address: str, usdc_contract_addr: str) -> tuple[float, float]:
+    """Return (native, usdc) for any EVM chain."""
     try:
         w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={"timeout": 15, "proxies": {}}))
-        checksum = Web3.to_checksum_address(address)
-
-        pol = float(w3.from_wei(w3.eth.get_balance(checksum), "ether"))
-
-        usdc_e = w3.eth.contract(
-            address=Web3.to_checksum_address(CONTRACTS["USDC_E"]),
-            abi=ERC20_ABI,
-        )
-        usdc_balance = usdc_e.functions.balanceOf(checksum).call() / 1e6
-
-        return WalletBalance(address=address, pol=pol, usdc_e=usdc_balance)
+        cs = Web3.to_checksum_address(address)
+        native = float(w3.from_wei(w3.eth.get_balance(cs), "ether"))
+        usdc_c = w3.eth.contract(address=Web3.to_checksum_address(usdc_contract_addr), abi=ERC20_ABI)
+        usdc = usdc_c.functions.balanceOf(cs).call() / 1e6
+        return native, usdc
     except Exception as e:
-        print(f"Warning: balance check failed for {address}: {e}")
-        return WalletBalance(address=address, pol=0.0, usdc_e=0.0)
+        print(f"evm balance error [{address}]: {e}")
+        return 0.0, 0.0
 
 
-def _get_safe_address(eoa_address: str) -> str:
-    """Derive Polymarket Safe address using CREATE2 (no RPC needed)."""
+async def _solana_balance(address: str) -> tuple[float, float]:
+    """Return (SOL, USDC) for a Solana address."""
+    if not address or address == "not derived":
+        return 0.0, 0.0
+    rpc = os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
     try:
-        return derive_polymarket_safe(eoa_address)
-    except Exception:
-        return ""
+        async with httpx.AsyncClient(timeout=10) as client:
+            sol_resp = await client.post(rpc, json={
+                "jsonrpc": "2.0", "id": 1, "method": "getBalance",
+                "params": [address],
+            })
+            lamports = sol_resp.json().get("result", {}).get("value", 0)
 
+            tok_resp = await client.post(rpc, json={
+                "jsonrpc": "2.0", "id": 2,
+                "method": "getTokenAccountsByOwner",
+                "params": [address, {"mint": SOLANA_USDC_MINT}, {"encoding": "jsonParsed"}],
+            })
+            accounts = tok_resp.json().get("result", {}).get("value", [])
+            usdc = 0.0
+            if accounts:
+                usdc = float(
+                    accounts[0]["account"]["data"]["parsed"]["info"]["tokenAmount"]["uiAmount"] or 0
+                )
+            return lamports / 1e9, usdc
+    except Exception as e:
+        print(f"solana balance error [{address}]: {e}")
+        return 0.0, 0.0
+
+
+# ── route ─────────────────────────────────────────────────────────────────────
 
 @router.get("/balance/{agent_id}", response_model=BalanceResponse)
 async def get_balance(agent_id: str, api_key: str = Depends(require_api_key)):
-    """Fetch EOA + Safe wallet balances for a registered agent.
-
-    Returns USDC.e and POL balances for both:
-    - **EOA wallet** — signing key, receives bridge deposits
-    - **Safe wallet** — Polymarket proxy, holds trading positions
     """
-
-    # Verify API key ownership
+    multi-chain balances for an agent:
+    - polygon eoa  (POL + USDC.e) — trading signer
+    - polygon safe (POL + USDC.e) — polymarket proxy wallet
+    - solana vault (SOL + USDC)   — metengine x402 payments
+    - base eoa     (ETH + USDC)   — same address, base chain
+    """
     key_hash = hash_api_key(api_key)
     agent = await store.get_agent_by_key_hash(key_hash)
     if not agent or agent.agent_id != agent_id:
         raise HTTPException(status_code=403, detail="API key does not match agent")
 
-    rpc_url = os.environ.get("CHAINSTACK_NODE", "")
-    if not rpc_url:
-        raise HTTPException(status_code=503, detail="RPC not configured")
+    polygon_rpc = os.environ.get("CHAINSTACK_NODE", "")
+    base_rpc = os.environ.get("BASE_RPC_URL", "https://mainnet.base.org")
+    if not polygon_rpc:
+        raise HTTPException(status_code=503, detail="polygon RPC not configured (CHAINSTACK_NODE)")
 
-    # Get EOA balances
-    eoa = _get_balances(rpc_url, agent.wallet_address)
+    safe_addr = agent.polygon_safe or derive_polymarket_safe(agent.wallet_address)
+    solana_addr = agent.solana_vault or ""
 
-    # Get Safe address and balances
-    safe_addr = _get_safe_address(agent.wallet_address)
-    safe = _get_balances(rpc_url, safe_addr) if safe_addr else WalletBalance(address="", pol=0.0, usdc_e=0.0)
+    loop = asyncio.get_event_loop()
 
-    total_usdc = eoa.usdc_e + safe.usdc_e
+    # kick off EVM queries in thread pool (blocking Web3 calls)
+    pol_eoa_fut  = loop.run_in_executor(None, _evm_balance, polygon_rpc, agent.wallet_address, CONTRACTS["USDC_E"])
+    pol_safe_fut = loop.run_in_executor(None, _evm_balance, polygon_rpc, safe_addr, CONTRACTS["USDC_E"])
+    base_fut     = loop.run_in_executor(None, _evm_balance, base_rpc, agent.wallet_address, BASE_USDC)
+    sol_coro     = _solana_balance(solana_addr)
+
+    pol_eoa_native,  pol_eoa_usdc  = await pol_eoa_fut
+    pol_safe_native, pol_safe_usdc = await pol_safe_fut
+    base_native,     base_usdc     = await base_fut
+    sol_native,      sol_usdc      = await sol_coro
+
+    total_usdc = pol_eoa_usdc + pol_safe_usdc + base_usdc + sol_usdc
 
     return BalanceResponse(
         agentId=agent_id,
-        eoa=eoa,
-        safe=safe,
-        total_usdc_e=total_usdc,
-        total_usd=total_usdc,  # USDC.e ≈ $1
+        polygon_eoa=ChainBalance(
+            chain="polygon", chain_logo=CHAIN_LOGOS["polygon"],
+            address=agent.wallet_address,
+            native=round(pol_eoa_native, 6), native_symbol="POL",
+            usdc=round(pol_eoa_usdc, 6),
+        ),
+        polygon_safe=ChainBalance(
+            chain="polygon", chain_logo=CHAIN_LOGOS["polygon"],
+            address=safe_addr,
+            native=round(pol_safe_native, 6), native_symbol="POL",
+            usdc=round(pol_safe_usdc, 6),
+        ),
+        solana_vault=ChainBalance(
+            chain="solana", chain_logo=CHAIN_LOGOS["solana"],
+            address=solana_addr or "not derived",
+            native=round(sol_native, 6), native_symbol="SOL",
+            usdc=round(sol_usdc, 6),
+        ),
+        base_eoa=ChainBalance(
+            chain="base", chain_logo=CHAIN_LOGOS["base"],
+            address=agent.wallet_address,
+            native=round(base_native, 6), native_symbol="ETH",
+            usdc=round(base_usdc, 6),
+        ),
+        total_usdc=round(total_usdc, 6),
+        flags={
+            "auto_rebalance": agent.auto_rebalance,
+            "auto_freemonies": agent.auto_freemonies,
+        },
     )

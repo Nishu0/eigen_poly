@@ -105,6 +105,10 @@ CREATE INDEX IF NOT EXISTS idx_agent_logs_agent ON agent_logs(agent_id);
 CREATE INDEX IF NOT EXISTS idx_agent_logs_created ON agent_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_device_codes_user_code ON device_codes(user_code);
 CREATE INDEX IF NOT EXISTS idx_device_codes_agent ON device_codes(agent_id);
+
+-- agent feature flags (idempotent migration)
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS auto_rebalance BOOLEAN DEFAULT FALSE;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS auto_freemonies BOOLEAN DEFAULT FALSE;
 """
 
 
