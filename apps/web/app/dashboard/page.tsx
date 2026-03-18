@@ -61,6 +61,10 @@ interface AgentRecord {
   agentId: string;
   walletAddress: string;
   walletIndex: number;
+  solanaAddress?: string;
+  polygonSafe?: string;
+  autoRebalance?: boolean;
+  autoFreemonies?: boolean;
   scopes: string[];
   createdAt: string;
   recentTrades?: TradeRecord[];
@@ -973,21 +977,32 @@ function MarketsTab() {
 // ─── Export Key Modal ─────────────────────────────────────────────────────────
 function ExportKeyModal({
   agent,
+  keyType,
   onClose,
 }: {
   agent: AgentRecord;
+  keyType: "evm" | "solana";
   onClose: () => void;
 }) {
   const [step, setStep] = useState<"confirm" | "loading" | "result" | "error">("confirm");
-  const [keyData, setKeyData] = useState<{ privateKey: string; walletAddress: string } | null>(null);
+  const [keyData, setKeyData] = useState<{ key: string; address: string } | null>(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [shown, setShown] = useState(false);
 
+  const isEvm = keyType === "evm";
+  const label = isEvm ? "EVM Private Key" : "Solana Private Key (base58)";
+  const walletLabel = isEvm ? "Polygon EOA" : "Solana Vault";
+  const address = isEvm ? agent.walletAddress : (agent.solanaAddress || "—");
+  const importNote = isEvm
+    ? "import into MetaMask or any EVM wallet"
+    : "import into Phantom or Solflare using 'Import Private Key'";
+
   const doExport = async () => {
     setStep("loading");
     try {
-      const res = await fetch("/api/export-key", {
+      const endpoint = isEvm ? "/api/export-key" : "/api/export-solana-key";
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ agentId: agent.agentId }),
@@ -998,8 +1013,8 @@ function ExportKeyModal({
       }
       const data = await res.json();
       setKeyData({
-        privateKey: data.privateKey,
-        walletAddress: data.walletAddress,
+        key: isEvm ? data.privateKey : data.privateKeyB58,
+        address: isEvm ? data.walletAddress : data.solanaAddress,
       });
       setStep("result");
     } catch (err: any) {
@@ -1020,7 +1035,7 @@ function ExportKeyModal({
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
             <Key size={16} style={{ color: "#CC5A38" }} />
-            <p className="text-sm font-mono font-bold text-white">Export Private Key</p>
+            <p className="text-sm font-mono font-bold text-white">Export {label}</p>
           </div>
           <button onClick={onClose} className="text-neutral-500 hover:text-white transition-colors">
             <X size={16} />
@@ -1033,28 +1048,27 @@ function ExportKeyModal({
               <div className="flex items-start gap-2">
                 <AlertTriangle size={14} className="text-amber-400 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-xs font-mono font-bold text-amber-400 mb-1">Security Warning</p>
+                  <p className="text-xs font-mono font-bold text-amber-400 mb-1">security warning</p>
                   <p className="text-[11px] font-mono text-amber-300/70 leading-relaxed">
-                    Your private key gives full control over your wallet. Never share it with anyone.
-                    Anyone with this key can drain your funds.
+                    anyone with this key can drain your wallet. {importNote}. never share it.
                   </p>
                 </div>
               </div>
             </div>
-            <p className="text-xs text-neutral-400 font-mono mb-1">Agent ID</p>
-            <p className="text-xs text-white font-mono mb-5 font-bold">{agent.agentId}</p>
-            <p className="text-xs text-neutral-400 font-mono mb-1">Wallet Address</p>
-            <p className="text-xs text-white font-mono mb-6 break-all">{agent.walletAddress}</p>
+            <p className="text-xs text-neutral-400 font-mono mb-1">agent id</p>
+            <p className="text-xs text-white font-mono mb-4 font-bold">{agent.agentId}</p>
+            <p className="text-xs text-neutral-400 font-mono mb-1">{walletLabel}</p>
+            <p className="text-xs text-white font-mono mb-6 break-all">{address}</p>
             <div className="flex gap-3">
               <button onClick={onClose} className="flex-1 rounded-lg border border-neutral-700 py-2 text-xs font-mono text-neutral-400 hover:text-white hover:border-neutral-500 transition-colors">
-                Cancel
+                cancel
               </button>
               <button
                 onClick={doExport}
                 className="flex-1 rounded-lg py-2 text-xs font-mono font-bold text-white transition-opacity hover:opacity-80"
                 style={{ background: "#CC5A38" }}
               >
-                Export Key
+                export key
               </button>
             </div>
           </>
@@ -1070,24 +1084,25 @@ function ExportKeyModal({
           <>
             <div className="flex items-center gap-2 mb-4 text-green-400">
               <CheckCircle2 size={14} />
-              <p className="text-xs font-mono font-bold">Key exported successfully</p>
+              <p className="text-xs font-mono font-bold">key exported successfully</p>
             </div>
-            <p className="text-[10px] text-neutral-500 font-mono mb-1 uppercase tracking-widest">Private Key</p>
+            <p className="text-[10px] text-neutral-500 font-mono mb-1 uppercase tracking-widest">{label}</p>
             <div className="flex items-center gap-2 mb-4">
               <code className="flex-1 text-[10px] font-mono text-white bg-neutral-900 rounded px-3 py-2 break-all">
-                {shown ? keyData.privateKey : "•".repeat(64)}
+                {shown ? keyData.key : "•".repeat(isEvm ? 64 : 88)}
               </code>
               <div className="flex flex-col gap-1">
                 <button onClick={() => setShown(!shown)} className="p-1.5 hover:bg-neutral-800 rounded transition-colors" title="Toggle visibility">
                   {shown ? <EyeOff size={12} className="text-neutral-400" /> : <Eye size={12} className="text-neutral-400" />}
                 </button>
-                <button onClick={() => copyKey(keyData.privateKey)} className="p-1.5 hover:bg-neutral-800 rounded transition-colors" title="Copy">
+                <button onClick={() => copyKey(keyData.key)} className="p-1.5 hover:bg-neutral-800 rounded transition-colors" title="Copy">
                   {copied ? <CheckCircle2 size={12} className="text-green-400" /> : <Copy size={12} className="text-neutral-400" />}
                 </button>
               </div>
             </div>
+            <p className="text-[10px] text-neutral-600 font-mono mb-4">{importNote}</p>
             <button onClick={onClose} className="w-full rounded-lg border border-neutral-700 py-2 text-xs font-mono text-neutral-400 hover:text-white transition-colors">
-              Close
+              close
             </button>
           </>
         )}
@@ -1098,7 +1113,7 @@ function ExportKeyModal({
               <p className="text-xs font-mono text-red-400">{error}</p>
             </div>
             <button onClick={onClose} className="w-full rounded-lg border border-neutral-700 py-2 text-xs font-mono text-neutral-400 hover:text-white transition-colors">
-              Close
+              close
             </button>
           </>
         )}
@@ -1112,6 +1127,7 @@ function AgentsTab() {
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [exportAgent, setExportAgent] = useState<AgentRecord | null>(null);
+  const [exportKeyType, setExportKeyType] = useState<"evm" | "solana">("evm");
 
   useEffect(() => {
     (async () => {
@@ -1137,7 +1153,7 @@ function AgentsTab() {
   return (
     <div className="space-y-4 w-full">
       {exportAgent && (
-        <ExportKeyModal agent={exportAgent} onClose={() => setExportAgent(null)} />
+        <ExportKeyModal agent={exportAgent} keyType={exportKeyType} onClose={() => setExportAgent(null)} />
       )}
 
       <div className="flex items-center justify-between">
@@ -1171,7 +1187,12 @@ function AgentsTab() {
       ) : (
         <div className="grid grid-cols-1 gap-4 w-full">
           {agents.map((agent) => (
-            <AgentCard key={agent.agentId} agent={agent} onExportKey={() => setExportAgent(agent)} />
+            <AgentCard
+              key={agent.agentId}
+              agent={agent}
+              onExportEvm={() => { setExportKeyType("evm"); setExportAgent(agent); }}
+              onExportSolana={() => { setExportKeyType("solana"); setExportAgent(agent); }}
+            />
           ))}
         </div>
       )}
@@ -1180,7 +1201,7 @@ function AgentsTab() {
 }
 
 // ─── Agent Card ───────────────────────────────────────────────────────────────
-function AgentCard({ agent, onExportKey }: { agent: AgentRecord; onExportKey: () => void }) {
+function AgentCard({ agent, onExportEvm, onExportSolana }: { agent: AgentRecord; onExportEvm: () => void; onExportSolana: () => void }) {
   // recentTrades are fetched server-side alongside agent data (see /user/agents backend route)
   const trades = agent.recentTrades || [];
   const loadingTrades = false;
@@ -1209,14 +1230,26 @@ function AgentCard({ agent, onExportKey }: { agent: AgentRecord; onExportKey: ()
             <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
             Active
           </span>
-          <button
-            onClick={onExportKey}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[10px] font-mono font-bold transition-all hover:opacity-80"
-            style={{ borderColor: "#CC5A38", color: "#CC5A38" }}
-          >
-            <Key size={10} />
-            Export Key
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={onExportEvm}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-[10px] font-mono font-bold transition-all hover:opacity-80"
+              style={{ borderColor: "#CC5A38", color: "#CC5A38" }}
+              title="Export EVM private key (MetaMask)"
+            >
+              <Key size={10} />
+              EVM
+            </button>
+            <button
+              onClick={onExportSolana}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-[10px] font-mono font-bold transition-all hover:opacity-80"
+              style={{ borderColor: "#9945FF", color: "#9945FF" }}
+              title="Export Solana private key (Phantom)"
+            >
+              <Key size={10} />
+              SOL
+            </button>
+          </div>
         </div>
       </div>
 
