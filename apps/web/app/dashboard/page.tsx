@@ -1200,9 +1200,155 @@ function AgentsTab() {
   );
 }
 
+// ─── Chain Balance Row ────────────────────────────────────────────────────────
+interface ChainBal {
+  chain: string;
+  chain_logo: string;
+  address: string;
+  native: number;
+  native_symbol: string;
+  usdc: number;
+  usdc_logo: string;
+}
+
+interface BalanceData {
+  polygon_eoa: ChainBal;
+  polygon_safe: ChainBal;
+  solana_vault: ChainBal;
+  base_eoa: ChainBal;
+  total_usdc: number;
+}
+
+function WalletBalances({ agentId }: { agentId: string }) {
+  const [bal, setBal] = useState<BalanceData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const fetch_ = async () => {
+    setLoading(true);
+    try {
+      // balance route requires api key — we call via session (dashboard owns the agent)
+      // The backend /balance/{id} requires x-api-key, so we expose it via a Next proxy
+      const res = await fetch(`/api/balance/${agentId}`);
+      if (res.ok) setBal(await res.json());
+    } catch {}
+    finally { setLoading(false); }
+  };
+
+  const toggle = () => {
+    if (!open && !bal) fetch_();
+    setOpen(o => !o);
+  };
+
+  const rows: { label: string; key: keyof Omit<BalanceData, "total_usdc"> }[] = [
+    { label: "polygon eoa",  key: "polygon_eoa" },
+    { label: "polygon safe", key: "polygon_safe" },
+    { label: "solana vault", key: "solana_vault" },
+    { label: "base eoa",     key: "base_eoa" },
+  ];
+
+  return (
+    <div className="mb-5">
+      <button
+        onClick={toggle}
+        className="flex items-center gap-2 text-[9px] uppercase tracking-widest font-mono mb-2 hover:opacity-70 transition-opacity"
+        style={{ color: "#CC5A38" }}
+      >
+        <span>balances</span>
+        <span className="text-neutral-600">{open ? "▲" : "▼"}</span>
+        {bal && <span className="text-neutral-400 normal-case tracking-normal ml-1">total ${bal.total_usdc.toFixed(2)} usdc</span>}
+      </button>
+
+      {open && (
+        <div className="rounded-lg border border-neutral-800 overflow-hidden">
+          {loading && (
+            <div className="flex items-center gap-2 p-4">
+              <RefreshCw size={12} className="animate-spin" style={{ color: "#CC5A38" }} />
+              <span className="text-[10px] text-neutral-500 font-mono">fetching balances…</span>
+            </div>
+          )}
+          {!loading && !bal && (
+            <div className="p-4 text-center">
+              <p className="text-[10px] text-neutral-600 font-mono">requires agent api key — not available via dashboard session</p>
+            </div>
+          )}
+          {bal && (
+            <table className="w-full text-[10px] font-mono">
+              <thead>
+                <tr className="border-b border-neutral-800">
+                  <th className="text-left text-neutral-600 uppercase tracking-widest px-3 py-2 font-normal">wallet</th>
+                  <th className="text-right text-neutral-600 uppercase tracking-widest px-3 py-2 font-normal">native</th>
+                  <th className="text-right text-neutral-600 uppercase tracking-widest px-3 py-2 font-normal">
+                    <span className="flex items-center justify-end gap-1">
+                      <img src={bal.polygon_eoa.usdc_logo} alt="usdc" className="w-3 h-3 rounded-full" />
+                      usdc
+                    </span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(({ label, key }) => {
+                  const w = bal[key];
+                  const shortAddr = w.address && w.address !== "not derived"
+                    ? `${w.address.slice(0, 6)}…${w.address.slice(-4)}`
+                    : "—";
+                  const explorerUrl = w.chain === "solana"
+                    ? `https://solscan.io/account/${w.address}`
+                    : w.chain === "base"
+                      ? `https://basescan.org/address/${w.address}`
+                      : `https://polygonscan.com/address/${w.address}`;
+                  return (
+                    <tr key={key} className="border-b border-neutral-800/50 hover:bg-neutral-900/40 transition-colors">
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <img src={w.chain_logo} alt={w.chain} className="w-3.5 h-3.5 rounded-full shrink-0" />
+                          <div>
+                            <p className="text-white">{label}</p>
+                            <a
+                              href={explorerUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-neutral-600 hover:text-[#CC5A38] transition-colors"
+                            >
+                              {shortAddr}
+                            </a>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-neutral-400">
+                        {key === "polygon_eoa" ? <span className="text-neutral-700">—</span> : (w.native > 0 ? `${w.native.toFixed(4)} ${w.native_symbol}` : `0 ${w.native_symbol}`)}
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <span className={w.usdc > 0 ? "text-white font-bold" : "text-neutral-600"}>
+                          ${w.usdc.toFixed(2)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                <tr className="bg-neutral-900/60">
+                  <td className="px-3 py-2 text-neutral-500" colSpan={2}>total usdc across all chains</td>
+                  <td className="px-3 py-2 text-right text-white font-bold">${bal.total_usdc.toFixed(2)}</td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+          {bal && (
+            <div className="px-3 py-2 border-t border-neutral-800 flex justify-end">
+              <button onClick={fetch_} className="flex items-center gap-1 text-[9px] text-neutral-600 hover:text-neutral-400 font-mono transition-colors">
+                <RefreshCw size={9} />
+                refresh
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Agent Card ───────────────────────────────────────────────────────────────
 function AgentCard({ agent, onExportEvm, onExportSolana }: { agent: AgentRecord; onExportEvm: () => void; onExportSolana: () => void }) {
-  // recentTrades are fetched server-side alongside agent data (see /user/agents backend route)
   const trades = agent.recentTrades || [];
   const loadingTrades = false;
 
@@ -1290,6 +1436,9 @@ function AgentCard({ agent, onExportEvm, onExportSolana }: { agent: AgentRecord;
           </div>
         </div>
       </div>
+
+      {/* Balances */}
+      <WalletBalances agentId={agent.agentId} />
 
       {/* Recent Activity */}
       <div>

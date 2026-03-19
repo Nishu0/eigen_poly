@@ -5,13 +5,15 @@ import asyncio
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from pydantic import BaseModel
 from web3 import Web3
 
 from lib.auth import require_api_key, hash_api_key
 from lib.agent_store import AgentStore
 from lib.contracts import CONTRACTS, ERC20_ABI, derive_polymarket_safe
+from lib.database import get_pool
+from routes.oauth import get_current_user
 
 
 router = APIRouter()
@@ -97,18 +99,35 @@ async def _solana_balance(address: str) -> tuple[float, float]:
 # ── route ─────────────────────────────────────────────────────────────────────
 
 @router.get("/balance/{agent_id}", response_model=BalanceResponse)
-async def get_balance(agent_id: str, api_key: str = Depends(require_api_key)):
+async def get_balance(
+    agent_id: str,
+    request: Request,
+    api_key: Optional[str] = Header(default=None, alias="x-api-key"),
+):
     """
-    multi-chain balances for an agent:
+    multi-chain balances for an agent.
+    accepts either x-api-key header or session cookie (dashboard).
     - polygon eoa  (POL + USDC.e) — trading signer
     - polygon safe (POL + USDC.e) — polymarket proxy wallet
     - solana vault (SOL + USDC)   — metengine x402 payments
     - base eoa     (ETH + USDC)   — same address, base chain
     """
-    key_hash = hash_api_key(api_key)
-    agent = await store.get_agent_by_key_hash(key_hash)
-    if not agent or agent.agent_id != agent_id:
-        raise HTTPException(status_code=403, detail="API key does not match agent")
+    if api_key and api_key.startswith("epk_"):
+        key_hash = hash_api_key(api_key)
+        agent = await store.get_agent_by_key_hash(key_hash)
+        if not agent or agent.agent_id != agent_id:
+            raise HTTPException(status_code=403, detail="API key does not match agent")
+    else:
+        user = get_current_user(request)
+        if not user:
+            raise HTTPException(status_code=401, detail="missing api key or session")
+        agent = await store.get_agent(agent_id)
+        if not agent:
+            raise HTTPException(status_code=404, detail="agent not found")
+        pool = get_pool()
+        owner = await pool.fetchval("SELECT owner_id FROM agents WHERE agent_id = $1", agent_id)
+        if owner != user["sub"]:
+            raise HTTPException(status_code=403, detail="you do not own this agent")
 
     polygon_rpc = os.environ.get("CHAINSTACK_NODE", "")
     base_rpc = os.environ.get("BASE_RPC_URL", "https://mainnet.base.org")
