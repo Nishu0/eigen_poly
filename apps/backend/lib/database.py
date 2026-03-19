@@ -109,11 +109,51 @@ CREATE INDEX IF NOT EXISTS idx_device_codes_agent ON device_codes(agent_id);
 -- agent feature flags (idempotent migration)
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS auto_rebalance BOOLEAN DEFAULT FALSE;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS auto_freemonies BOOLEAN DEFAULT FALSE;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS freemonies_max_markets INTEGER DEFAULT 2;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS freemonies_amount_per_market FLOAT DEFAULT 2.0;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='agents' AND column_name='solana_vault') THEN
     ALTER TABLE agents RENAME COLUMN solana_vault TO solana_wallet;
   END IF;
 END $$;
+
+CREATE TABLE IF NOT EXISTS vault_positions (
+    position_id TEXT PRIMARY KEY,
+    agent_id TEXT REFERENCES agents(agent_id),
+    protocol TEXT NOT NULL,
+    protocol_name TEXT NOT NULL,
+    pool_id TEXT NOT NULL,
+    amount_usdc FLOAT NOT NULL,
+    shares_held TEXT NOT NULL DEFAULT '0',
+    apy_at_entry FLOAT NOT NULL,
+    status TEXT DEFAULT 'active',
+    deposited_at TIMESTAMPTZ DEFAULT NOW(),
+    withdrawn_at TIMESTAMPTZ,
+    deposit_tx TEXT,
+    withdraw_tx TEXT
+);
+
+CREATE TABLE IF NOT EXISTS vault_logs (
+    log_id TEXT PRIMARY KEY,
+    agent_id TEXT REFERENCES agents(agent_id),
+    action TEXT NOT NULL,
+    from_protocol TEXT,
+    from_pool_id TEXT,
+    to_protocol TEXT,
+    to_pool_id TEXT,
+    amount_usdc FLOAT,
+    apy FLOAT,
+    shares TEXT,
+    tx_hash TEXT,
+    reason TEXT,
+    error TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_vault_positions_agent ON vault_positions(agent_id);
+CREATE INDEX IF NOT EXISTS idx_vault_positions_status ON vault_positions(status);
+CREATE INDEX IF NOT EXISTS idx_vault_logs_agent ON vault_logs(agent_id);
+CREATE INDEX IF NOT EXISTS idx_vault_logs_created ON vault_logs(created_at DESC);
 """
 
 
