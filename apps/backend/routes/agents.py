@@ -61,6 +61,8 @@ class PnLSummary(BaseModel):
 class FlagsUpdate(BaseModel):
     auto_rebalance: Opt[bool] = None
     auto_freemonies: Opt[bool] = None
+    freemonies_max_markets: Opt[int] = None        # how many markets to invest in per cycle (default 2)
+    freemonies_amount_per_market: Opt[float] = None  # USDC per market (default $2)
 
 
 @router.patch("/agents/{agent_id}/flags")
@@ -69,27 +71,35 @@ async def update_agent_flags(
     body: FlagsUpdate,
     api_key: str = Depends(require_api_key),
 ):
-    """Toggle auto_rebalance and/or auto_freemonies flags for an agent.
+    """Toggle flags and configure auto-invest settings.
 
-    Can be called from the dashboard or via agent chat.
-    auto_rebalance  — deploy idle usdc into giza protocol (up to 15% apy)
-    auto_freemonies — auto-invest in metengine high-conviction safe markets (2-6% yield)
+    auto_rebalance              — auto-deploy idle Base USDC into best DeFi yield vault
+    auto_freemonies             — auto-invest in MetEngine high-conviction markets
+    freemonies_max_markets      — max markets to invest in per cycle (default 2)
+    freemonies_amount_per_market — USDC per market trade (default $2, min $2)
     """
     key_hash = hash_api_key(api_key)
     agent = await store.get_agent_by_key_hash(key_hash)
     if not agent or agent.agent_id != agent_id:
         raise HTTPException(status_code=403, detail="API key does not match agent")
 
+    if body.freemonies_amount_per_market is not None and body.freemonies_amount_per_market < 2.0:
+        raise HTTPException(status_code=400, detail="freemonies_amount_per_market minimum is $2.00")
+
     await store.update_flags(
         agent_id,
         auto_rebalance=body.auto_rebalance,
         auto_freemonies=body.auto_freemonies,
+        freemonies_max_markets=body.freemonies_max_markets,
+        freemonies_amount_per_market=body.freemonies_amount_per_market,
     )
     updated = await store.get_agent(agent_id)
     return {
         "agentId": agent_id,
         "auto_rebalance": updated.auto_rebalance,
         "auto_freemonies": updated.auto_freemonies,
+        "freemonies_max_markets": updated.freemonies_max_markets,
+        "freemonies_amount_per_market": updated.freemonies_amount_per_market,
     }
 
 

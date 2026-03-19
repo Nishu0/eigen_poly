@@ -21,6 +21,8 @@ class Agent:
     created_at: str
     auto_rebalance: bool = False
     auto_freemonies: bool = False
+    freemonies_max_markets: int = 2
+    freemonies_amount_per_market: float = 2.0
 
 
 class AgentStore:
@@ -82,8 +84,10 @@ class AgentStore:
         agent_id: str,
         auto_rebalance: Optional[bool] = None,
         auto_freemonies: Optional[bool] = None,
+        freemonies_max_markets: Optional[int] = None,
+        freemonies_amount_per_market: Optional[float] = None,
     ) -> None:
-        """Toggle auto_rebalance / auto_freemonies flags for an agent."""
+        """Toggle flags and update freemonies config for an agent."""
         pool = get_pool()
         if auto_rebalance is not None:
             await pool.execute(
@@ -94,6 +98,16 @@ class AgentStore:
             await pool.execute(
                 "UPDATE agents SET auto_freemonies = $1 WHERE agent_id = $2",
                 auto_freemonies, agent_id,
+            )
+        if freemonies_max_markets is not None:
+            await pool.execute(
+                "UPDATE agents SET freemonies_max_markets = $1 WHERE agent_id = $2",
+                freemonies_max_markets, agent_id,
+            )
+        if freemonies_amount_per_market is not None:
+            await pool.execute(
+                "UPDATE agents SET freemonies_amount_per_market = $1 WHERE agent_id = $2",
+                freemonies_amount_per_market, agent_id,
             )
 
     async def get_agent(self, agent_id: str) -> Optional[Agent]:
@@ -127,4 +141,6 @@ class AgentStore:
             created_at=row["created_at"].isoformat() if row["created_at"] else "",
             auto_rebalance=bool(row.get("auto_rebalance", False)),
             auto_freemonies=bool(row.get("auto_freemonies", False)),
+            freemonies_max_markets=int(row.get("freemonies_max_markets") or 2),
+            freemonies_amount_per_market=float(row.get("freemonies_amount_per_market") or 2.0),
         )
