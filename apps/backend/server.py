@@ -1,6 +1,8 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+import asyncio
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -21,6 +23,9 @@ from routes.logs import router as logs_router
 from routes.analytics import router as analytics_router
 from routes.metengine import router as metengine_router
 from routes.vaults import router as vaults_router
+from routes.rebalance import router as rebalance_router
+from lib.rebalance import start_rebalance_cron
+from lib.freemonies import start_freemonies_cron
 from lib.logging_middleware import AgentLogMiddleware
 
 
@@ -50,6 +55,13 @@ async def lifespan(app: FastAPI):
         traceback.print_exc()
         print(f"[STARTUP] FAILED TO CONNECT TO DB: {e}")
         print("[STARTUP] Application continuing to start (unhealthy).")
+
+    # ── Start auto-rebalance background cron ──────────────────────────────────
+    asyncio.create_task(start_rebalance_cron())
+    print(f"[STARTUP] Rebalance cron scheduled every {os.environ.get('REBALANCE_INTERVAL_HOURS', '3')}h")
+    asyncio.create_task(start_freemonies_cron())
+    print(f"[STARTUP] Freemonies cron scheduled every {os.environ.get('FREEMONIES_INTERVAL_HOURS', os.environ.get('REBALANCE_INTERVAL_HOURS', '3'))}h")
+
     yield
     await close_db()
 
@@ -86,6 +98,7 @@ app.include_router(logs_router, tags=["Logs"])
 app.include_router(analytics_router)
 app.include_router(metengine_router)
 app.include_router(vaults_router)
+app.include_router(rebalance_router)
 
 
 # Add logging middleware (after routes are set up)
