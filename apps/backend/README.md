@@ -339,6 +339,23 @@ Run the one-time approval setup:
 uv run python scripts/polyclaw.py wallet approve
 ```
 
+## Experimental Features
+
+Autonomous DeFi yield optimization, smart money auto-trading, and TEE-secured wallet infrastructure.
+
+**[Read the full experimental features guide →](./experimental.md)**
+
+| Feature | Status |
+|---------|--------|
+| Auto-Rebalance — idle USDC → best yield vault | Live |
+| Auto-Freemonies — MetEngine smart money auto-trading | Live |
+| TEE wallet derivation (Intel TDX via EigenCompute) | Live |
+| Cross-chain deposit routing | Live |
+| Auto-close positions on market resolution | Coming Soon |
+| Multi-agent portfolio dashboard | Coming Soon |
+| Risk controls (drawdown limits, position caps) | Coming Soon |
+| Push notifications (webhook / Telegram) | Coming Soon |
+
 ## License
 
 MIT

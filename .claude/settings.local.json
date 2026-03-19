@@ -11,7 +11,24 @@
       "Bash(curl -s https://bridge.polymarket.com/supported-assets)",
       "Bash(curl:*)",
       "Bash(.venv/bin/python scripts/db.py reset)",
-      "Bash(python3 -m json.tool)"
+      "Bash(python3 -m json.tool)",
+      "Bash(python -m py_compile lib/rebalance.py)",
+      "Bash(python -m py_compile routes/rebalance.py)",
+      "Bash(python -m py_compile lib/database.py)",
+      "Bash(python -m py_compile server.py)",
+      "Bash(python3 -m py_compile lib/rebalance.py)",
+      "Bash(python3 -m py_compile routes/rebalance.py)",
+      "Bash(python3 -m py_compile lib/database.py)",
+      "Bash(python3 -m py_compile server.py)",
+      "Bash(.venv/bin/python -c \"import lib.rebalance; import routes.rebalance; print\\('imports OK'\\)\")",
+      "Bash(.venv/bin/python scripts/db.py migrate)",
+      "Bash(git add:*)",
+      "Bash(git reset:*)",
+      "Bash(GIT_AUTHOR_DATE=\"2026-03-19 09:07:14 +0000\" GIT_COMMITTER_DATE=\"2026-03-19 09:07:14 +0000\" git commit -m \"feat\\(db\\): add vault tables and freemonies config columns\")",
+      "Bash(GIT_AUTHOR_DATE=\"2026-03-19 09:21:38 +0000\" GIT_COMMITTER_DATE=\"2026-03-19 09:21:38 +0000\" git commit -m \"feat\\(agents\\): add freemonies config fields and flag validation\")",
+      "Bash(GIT_AUTHOR_DATE=\"2026-03-19 09:41:52 +0000\" GIT_COMMITTER_DATE=\"2026-03-19 09:41:52 +0000\" git commit -m \"feat\\(rebalance\\): auto-yield engine with DefiLlama vault selection\")",
+      "Bash(GIT_AUTHOR_DATE=\"2026-03-19 09:55:27 +0000\" GIT_COMMITTER_DATE=\"2026-03-19 09:55:27 +0000\" git commit -m \"feat\\(freemonies\\): auto MetEngine trading cron with x402 Solana payments\")",
+      "Bash(GIT_AUTHOR_DATE=\"2026-03-19 10:03:09 +0000\" GIT_COMMITTER_DATE=\"2026-03-19 10:03:09 +0000\" git commit -m \"docs: update skill manifest, readme, and experimental features guide\")"
     ]
   }
 }
