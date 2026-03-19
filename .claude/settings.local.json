@@ -4,7 +4,12 @@
       "Bash(PGPASSWORD=npg_O64MJFjvSfqy psql \"postgresql://neondb_owner@ep-orange-block-a8yfdtmk-pooler.eastus2.azure.neon.tech/neondb?sslmode=require\" -c \"TRUNCATE agent_logs, positions, trades, device_codes, agents, users CASCADE;\" 2>&1)",
       "Bash(python -c \":*)",
       "Bash(.venv/bin/python -c \":*)",
-      "Bash(bun run:*)"
+      "Bash(bun run:*)",
+      "Bash(.venv/bin/pip show:*)",
+      "Bash(curl -s \"https://bridge.polymarket.com/supported-assets\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d, indent=2\\)\\)\")",
+      "Bash(curl -s https://bridge.polymarket.com/supported-assets)",
+      "Bash(curl:*)"
     ]
   }
 }
