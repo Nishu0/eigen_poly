@@ -114,8 +114,9 @@ async def execute_trade(req: TradeRequest, api_key: str = Depends(require_api_ke
             detail=f"Price {entry_price:.4f} exceeds slippage limit (max: {1 - risk.maxSlippage})",
         )
 
-    # 5. Execute the real trade — split on-chain + CLOB sell
-    executor = TradeExecutor(wallet)
+    # 5. Execute the real trade — split via Safe + CLOB sell
+    safe_address = agent.polygon_safe or None
+    executor = TradeExecutor(wallet, safe_address=safe_address)
     try:
         result = await executor.buy_position(
             market_id=req.marketId,

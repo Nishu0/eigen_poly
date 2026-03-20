@@ -24,7 +24,7 @@ from web3 import Web3
 from lib.wallet_manager import WalletManager
 from lib.gamma_client import GammaClient, Market
 from lib.clob_client import ClobClientWrapper
-from lib.contracts import CONTRACTS, CTF_ABI, POLYGON_CHAIN_ID, derive_polymarket_safe
+from lib.contracts import CONTRACTS, CTF_ABI, ERC20_ABI, POLYGON_CHAIN_ID, derive_polymarket_safe
 from lib.position_storage import PositionStorage, PositionEntry
 
 
@@ -46,50 +46,74 @@ class TradeResult:
 
 
 class TradeExecutor:
-    """Executes on-chain trades via split + CLOB sell."""
+    """Executes on-chain trades via split + CLOB sell.
 
-    def __init__(self, wallet: WalletManager):
+    When safe_address is provided, all on-chain interactions (approvals, split)
+    are executed through the Gnosis Safe — the Safe is msg.sender, so USDC.e
+    is pulled from the Safe and YES/NO tokens are minted to the Safe.
+    """
+
+    def __init__(self, wallet: WalletManager, safe_address: Optional[str] = None):
         self.wallet = wallet
+        self.safe_address = safe_address or derive_polymarket_safe(wallet.address)
         self._gamma = GammaClient()
 
     def _get_web3(self) -> Web3:
-        """Get Web3 instance."""
         return Web3(
             Web3.HTTPProvider(
                 self.wallet.rpc_url,
-                request_kwargs={"timeout": 60, "proxies": {}}  # Bypass HTTPS_PROXY
+                request_kwargs={"timeout": 60, "proxies": {}}
             )
         )
 
+    def _get_trading_balance(self) -> float:
+        """Return USDC.e balance of the Safe (the actual trading wallet)."""
+        return self.wallet.get_safe_usdc_balance(self.safe_address)
+
     def _ensure_approvals(self):
-        """Check and set Polymarket contract approvals if needed."""
-        if not self.wallet.check_approvals():
-            print("Setting Polymarket contract approvals...")
-            try:
-                tx_hashes = self.wallet.set_approvals()
-                print(f"Approvals set: {len(tx_hashes)} transactions")
-                for h in tx_hashes:
-                    print(f"  tx: {h}")
-            except Exception as e:
-                print(f"Warning: approval failed: {e}")
-                raise ValueError(f"Failed to set approvals: {e}")
+        """Check and set Polymarket approvals on the Safe if needed."""
+        w3 = self._get_web3()
+        safe = Web3.to_checksum_address(self.safe_address)
+        MAX_UINT256 = 2**256 - 1
+
+        usdc = w3.eth.contract(
+            address=Web3.to_checksum_address(CONTRACTS["USDC_E"]), abi=ERC20_ABI
+        )
+        ctf = w3.eth.contract(
+            address=Web3.to_checksum_address(CONTRACTS["CTF"]), abi=CTF_ABI
+        )
+
+        # USDC.e allowances from Safe → Polymarket contracts
+        for contract_key in ("CTF", "CTF_EXCHANGE", "NEG_RISK_CTF_EXCHANGE"):
+            spender = Web3.to_checksum_address(CONTRACTS[contract_key])
+            if usdc.functions.allowance(safe, spender).call() == 0:
+                print(f"Approving USDC.e → {contract_key} via Safe...")
+                data = usdc.encodeABI(fn_name="approve", args=[spender, MAX_UINT256])
+                self.wallet.safe_exec(self.safe_address, CONTRACTS["USDC_E"], bytes.fromhex(data[2:]))
+
+        # CTF token approvals from Safe → exchange contracts
+        for contract_key in ("CTF_EXCHANGE", "NEG_RISK_CTF_EXCHANGE", "NEG_RISK_ADAPTER"):
+            spender = Web3.to_checksum_address(CONTRACTS[contract_key])
+            if not ctf.functions.isApprovedForAll(safe, spender).call():
+                print(f"Approving CTF → {contract_key} via Safe...")
+                data = ctf.encodeABI(fn_name="setApprovalForAll", args=[spender, True])
+                self.wallet.safe_exec(self.safe_address, CONTRACTS["CTF"], bytes.fromhex(data[2:]))
 
     def _split_position(
         self,
         condition_id: str,
         amount_usd: float,
     ) -> str:
-        """Split USDC into YES + NO tokens. Returns tx hash."""
-        # Ensure approvals are set before splitting
+        """Split Safe's USDC.e into YES + NO tokens via Safe.execTransaction.
+
+        The Safe is msg.sender — USDC.e leaves the Safe, YES+NO tokens arrive at Safe.
+        EOA only pays Polygon gas for the execTransaction call.
+        """
         self._ensure_approvals()
 
         w3 = self._get_web3()
-        address = Web3.to_checksum_address(self.wallet.address)
-        account = w3.eth.account.from_key(self.wallet.get_unlocked_key())
-
         ctf = w3.eth.contract(
-            address=Web3.to_checksum_address(CONTRACTS["CTF"]),
-            abi=CTF_ABI,
+            address=Web3.to_checksum_address(CONTRACTS["CTF"]), abi=CTF_ABI
         )
 
         amount_wei = int(amount_usd * 1e6)
@@ -97,32 +121,22 @@ class TradeExecutor:
             condition_id[2:] if condition_id.startswith("0x") else condition_id
         )
 
-        tx = ctf.functions.splitPosition(
-            Web3.to_checksum_address(CONTRACTS["USDC_E"]),
-            bytes(32),  # parentCollectionId
-            condition_bytes,
-            [1, 2],  # partition for YES, NO
-            amount_wei,
-        ).build_transaction(
-            {
-                "from": address,
-                "nonce": w3.eth.get_transaction_count(address),
-                "gas": 300000,
-                "gasPrice": w3.eth.gas_price,
-                "chainId": POLYGON_CHAIN_ID,
-            }
+        data = ctf.encodeABI(
+            fn_name="splitPosition",
+            args=[
+                Web3.to_checksum_address(CONTRACTS["USDC_E"]),
+                bytes(32),       # parentCollectionId
+                condition_bytes,
+                [1, 2],          # partition YES, NO
+                amount_wei,
+            ],
         )
 
-        signed = account.sign_transaction(tx)
-        tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-        print(f"Split TX submitted: {tx_hash.hex()}")
-
-        receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
-        if receipt["status"] != 1:
-            raise ValueError(f"Split failed: {tx_hash.hex()}")
-
-        print(f"Split confirmed in block {receipt['blockNumber']}")
-        return tx_hash.hex()
+        tx_hash = self.wallet.safe_exec(
+            self.safe_address, CONTRACTS["CTF"], bytes.fromhex(data[2:]), gas=400000
+        )
+        print(f"Split TX (via Safe): {tx_hash}")
+        return tx_hash
 
     async def buy_position(
         self,
@@ -158,9 +172,9 @@ class TradeExecutor:
                 error="Wallet not unlocked",
             )
 
-        # Check balance
-        balances = self.wallet.get_balances()
-        if balances.usdc_e < amount:
+        # Check balance on the Safe (the actual trading wallet)
+        safe_usdc = self._get_trading_balance()
+        if safe_usdc < amount:
             return TradeResult(
                 success=False,
                 market_id=market_id,
@@ -169,7 +183,7 @@ class TradeExecutor:
                 split_tx=None,
                 clob_order_id=None,
                 clob_filled=False,
-                error=f"Insufficient USDC.e: have {balances.usdc_e:.2f}, need {amount:.2f}",
+                error=f"Insufficient USDC.e in Safe: have {safe_usdc:.2f}, need {amount:.2f}",
             )
 
         # Get market info
@@ -222,11 +236,10 @@ class TradeExecutor:
         if not skip_clob_sell and unwanted_token:
             print("Selling unwanted tokens via CLOB...")
             try:
-                safe_address = derive_polymarket_safe(self.wallet.address)
                 clob = ClobClientWrapper(
                     self.wallet.get_unlocked_key(),
                     self.wallet.address,
-                    safe_address=safe_address,
+                    safe_address=self.safe_address,
                 )
                 clob_order_id, clob_filled, clob_error = clob.sell_fok(
                     unwanted_token,

@@ -316,8 +316,8 @@ async def run_freemonies_for_agent(agent: Agent) -> dict:
         result["error"] = "EVM wallet unavailable"
         return result
 
-    # 6. Execute trades
-    executor = TradeExecutor(wallet)
+    # 6. Execute trades via the Safe
+    executor = TradeExecutor(wallet, safe_address=agent.polygon_safe or None)
     traded = 0
 
     for item in targets:
