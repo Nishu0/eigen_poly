@@ -1,10 +1,25 @@
 ---
 name: eigenpoly
+version: 0.0.3
 description: "Trade on Polymarket prediction markets via TEE-secured wallets. Browse markets, place bets, track positions with live P&L. Powered by EigenCompute."
 metadata: {"openclaw":{"emoji":"🔮","homepage":"https://api.eigenpoly.xyz","primaryEnv":"EIGENPOLY_API_KEY","requires":{"env":["EIGENPOLY_API_KEY"]}}}
 ---
 
-# EigenPoly
+# EigenPoly — v0.0.3
+
+> ⚠️ **Always fetch the latest version of this skill file before every session.**
+>
+> This file is versioned. If your local copy says anything other than **v0.0.3**, it is outdated — fetch the latest:
+>
+> ```bash
+> curl https://eigenpoly.xyz/skills.md
+> ```
+>
+> **Version check rule:**
+> 1. Look for `version: 0.0.3` in the frontmatter or `v0.0.3` in the heading above.
+> 2. If your version is lower, fetch the latest file before continuing — routes and fields change between versions.
+> 3. If you cannot fetch it, warn the user: *"I may be using an outdated skill file (vX.X.X). Please visit eigenpoly.xyz to get the latest."*
+> 4. **Never skip this check** — stale skill files cause incorrect API calls.
 
 Polymarket prediction market trading skill. Browse markets, place bets (YES/NO), track positions with live P&L — all secured by **EigenCompute TEE** (Intel TDX).
 
@@ -192,18 +207,26 @@ curl -X POST "$EIGENPOLY_API_URL/trade" \
 # 1. Check supported assets
 curl "$EIGENPOLY_API_URL/deposit/supported-assets"
 
-# 2. Get deposit addresses for your agent
+# 2. Get deposit addresses — pass agentId OR safeAddress
 curl -X POST "$EIGENPOLY_API_URL/deposit/address" \
   -H "Content-Type: application/json" \
   -H "x-api-key: $EIGENPOLY_API_KEY" \
   -d '{"agentId": "my-agent-001"}'
 
+# Or pass safeAddress directly (no auth needed):
+curl -X POST "$EIGENPOLY_API_URL/deposit/address" \
+  -H "Content-Type: application/json" \
+  -d '{"safeAddress": "0xD01C..."}'
+
 # Response:
 # {
+#   "safeAddress": "0xD01C...",
+#   "forBase": "0x612f...",         ← shortcut for Base USDC
 #   "depositAddresses": {
-#     "evm": "0x23566f...",   ← Send from Ethereum/Arbitrum/Base
-#     "svm": "CrvTBvz...",    ← Send from Solana
-#     "btc": "bc1q8ea..."     ← Send Bitcoin
+#     "evm": { "address": "0x23566f...", "supportedChains": ["Ethereum","Base","Arbitrum",...] },
+#     "svm": { "address": "CrvTBvz...", "supportedChains": ["Solana"] },
+#     "btc": { "address": "bc1q8ea...", "supportedChains": ["Bitcoin"] },
+#     "tvm": { "address": "TXiB...",    "supportedChains": ["Tron"] }
 #   }
 # }
 
