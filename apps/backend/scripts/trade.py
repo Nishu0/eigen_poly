@@ -59,12 +59,10 @@ class TradeExecutor:
         self._gamma = GammaClient()
 
     def _get_web3(self) -> Web3:
-        return Web3(
-            Web3.HTTPProvider(
-                self.wallet.rpc_url,
-                request_kwargs={"timeout": 60, "proxies": {}}
-            )
-        )
+        from web3.middleware import ExtraDataToPOAMiddleware
+        w3 = Web3(Web3.HTTPProvider(self.wallet.rpc_url, request_kwargs={"timeout": 60}))
+        w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+        return w3
 
     def _get_trading_balance(self) -> float:
         """Return USDC.e balance of the Safe (the actual trading wallet)."""

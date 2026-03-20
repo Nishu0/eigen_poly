@@ -36,7 +36,9 @@ def _get_safe_address(eoa_address: str) -> str:
     if not rpc_url:
         return eoa_address
     try:
-        w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={"timeout": 15, "proxies": {}}))
+        from web3.middleware import ExtraDataToPOAMiddleware
+        w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={"timeout": 15}))
+        w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
         exchange = w3.eth.contract(
             address=Web3.to_checksum_address(CONTRACTS["CTF_EXCHANGE"]),
             abi=PROXY_WALLET_ABI,

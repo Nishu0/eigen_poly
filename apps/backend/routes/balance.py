@@ -55,7 +55,9 @@ class BalanceResponse(BaseModel):
 def _evm_balance(rpc_url: str, address: str, usdc_contract_addr: str) -> tuple[float, float]:
     """Return (native, usdc) for any EVM chain."""
     try:
-        w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={"timeout": 15, "proxies": {}}))
+        from web3.middleware import ExtraDataToPOAMiddleware
+        w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={"timeout": 15}))
+        w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
         cs = Web3.to_checksum_address(address)
         native = float(w3.from_wei(w3.eth.get_balance(cs), "ether"))
         usdc_c = w3.eth.contract(address=Web3.to_checksum_address(usdc_contract_addr), abi=ERC20_ABI)

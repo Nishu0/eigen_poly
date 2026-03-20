@@ -116,7 +116,10 @@ class WalletManager:
         """Get Web3 instance."""
         if not self.rpc_url:
             raise ValueError("CHAINSTACK_NODE environment variable not set")
-        return Web3(Web3.HTTPProvider(self.rpc_url, request_kwargs={"timeout": 60, "proxies": {}}))
+        from web3.middleware import ExtraDataToPOAMiddleware
+        w3 = Web3(Web3.HTTPProvider(self.rpc_url, request_kwargs={"timeout": 60}))
+        w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+        return w3
 
     def get_unlocked_key(self) -> str:
         """Get the private key for signing."""

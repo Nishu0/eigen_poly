@@ -196,7 +196,7 @@ COMPOUND_COMET_ABI = [
 
 def _get_w3() -> Web3:
     rpc = _env("BASE_RPC_URL", "https://mainnet.base.org")
-    return Web3(Web3.HTTPProvider(rpc, request_kwargs={"timeout": 30, "proxies": {}}))
+    return Web3(Web3.HTTPProvider(rpc, request_kwargs={"timeout": 30}))
 
 
 def _cs(addr: str) -> str:

@@ -37,7 +37,8 @@
       "Bash(python3 -c \"import web3; print\\(web3.__version__\\)\")",
       "Bash(/Users/nisargthakkar/Projects/eigen_poly/apps/backend/.venv/bin/python -c \"import web3; print\\(web3.__version__\\)\")",
       "Bash(/Users/nisargthakkar/Projects/eigen_poly/apps/backend/.venv/bin/python -c \"from web3 import Web3; help\\(Web3.eth.contract\\)\")",
-      "Bash(/Users/nisargthakkar/Projects/eigen_poly/apps/backend/.venv/bin/python -c \":*)"
+      "Bash(/Users/nisargthakkar/Projects/eigen_poly/apps/backend/.venv/bin/python -c \":*)",
+      "Bash(/Users/nisargthakkar/Projects/eigen_poly/apps/backend/.venv/bin/python -c \"\nfrom web3 import Web3\nfrom web3.middleware import ExtraDataToPOAMiddleware\nprint\\('POA middleware available:', ExtraDataToPOAMiddleware\\)\n\" 2>&1)"
     ]
   }
 }
