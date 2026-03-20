@@ -88,7 +88,7 @@ class TradeExecutor:
             spender = Web3.to_checksum_address(CONTRACTS[contract_key])
             if usdc.functions.allowance(safe, spender).call() == 0:
                 print(f"Approving USDC.e → {contract_key} via Safe...")
-                data = usdc.encodeABI(fn_name="approve", args=[spender, MAX_UINT256])
+                data = usdc.encode_abi("approve", args=[spender, MAX_UINT256])
                 self.wallet.safe_exec(self.safe_address, CONTRACTS["USDC_E"], bytes.fromhex(data[2:]))
 
         # CTF token approvals from Safe → exchange contracts
@@ -96,7 +96,7 @@ class TradeExecutor:
             spender = Web3.to_checksum_address(CONTRACTS[contract_key])
             if not ctf.functions.isApprovedForAll(safe, spender).call():
                 print(f"Approving CTF → {contract_key} via Safe...")
-                data = ctf.encodeABI(fn_name="setApprovalForAll", args=[spender, True])
+                data = ctf.encode_abi("setApprovalForAll", args=[spender, True])
                 self.wallet.safe_exec(self.safe_address, CONTRACTS["CTF"], bytes.fromhex(data[2:]))
 
     def _split_position(
@@ -121,8 +121,8 @@ class TradeExecutor:
             condition_id[2:] if condition_id.startswith("0x") else condition_id
         )
 
-        data = ctf.encodeABI(
-            fn_name="splitPosition",
+        data = ctf.encode_abi(
+            "splitPosition",
             args=[
                 Web3.to_checksum_address(CONTRACTS["USDC_E"]),
                 bytes(32),       # parentCollectionId

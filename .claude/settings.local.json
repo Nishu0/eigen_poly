@@ -31,7 +31,13 @@
       "Bash(GIT_AUTHOR_DATE=\"2026-03-19 10:03:09 +0000\" GIT_COMMITTER_DATE=\"2026-03-19 10:03:09 +0000\" git commit -m \"docs: update skill manifest, readme, and experimental features guide\")",
       "Bash(.venv/bin/python -c \"from eth_abi import encode; from eth_keys import keys; print\\('ok'\\)\")",
       "Bash(.venv/bin/python -c \"from scripts.trade import TradeExecutor; print\\('ok'\\)\")",
-      "Bash(.venv/bin/python -c \"from lib.wallet_manager import WalletManager; print\\('ok'\\)\")"
+      "Bash(.venv/bin/python -c \"from lib.wallet_manager import WalletManager; print\\('ok'\\)\")",
+      "Bash(grep -r web3 /Users/nisargthakkar/Projects/eigen_poly/apps/backend/requirements*.txt)",
+      "Bash(find /Users/nisargthakkar/Projects/eigen_poly/apps/backend -name *.txt -o -name pyproject.toml)",
+      "Bash(python3 -c \"import web3; print\\(web3.__version__\\)\")",
+      "Bash(/Users/nisargthakkar/Projects/eigen_poly/apps/backend/.venv/bin/python -c \"import web3; print\\(web3.__version__\\)\")",
+      "Bash(/Users/nisargthakkar/Projects/eigen_poly/apps/backend/.venv/bin/python -c \"from web3 import Web3; help\\(Web3.eth.contract\\)\")",
+      "Bash(/Users/nisargthakkar/Projects/eigen_poly/apps/backend/.venv/bin/python -c \":*)"
     ]
   }
 }
