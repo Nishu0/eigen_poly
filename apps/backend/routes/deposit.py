@@ -7,7 +7,7 @@ Bridge API base: https://bridge.polymarket.com
 """
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 import os
@@ -51,8 +51,17 @@ def _get_safe_address(eoa_address: str) -> str:
 # --- Models ---
 
 
+ADDRESS_TYPE_CHAINS = {
+    "evm": ["Ethereum", "Base", "Arbitrum", "Optimism", "and other EVM chains"],
+    "svm": ["Solana"],
+    "btc": ["Bitcoin"],
+    "tvm": ["Tron"],
+}
+
+
 class DepositAddressRequest(BaseModel):
-    agentId: str
+    agentId: Optional[str] = None
+    safeAddress: Optional[str] = None  # Pass Safe wallet directly
 
 
 class QuoteRequest(BaseModel):
@@ -97,27 +106,39 @@ async def get_supported_assets():
 @router.post("/address")
 async def create_deposit_address(
     req: DepositAddressRequest,
-    api_key: str = Depends(require_api_key),
+    x_api_key: Optional[str] = Header(None, alias="x-api-key"),
 ):
-    """Create cross-chain deposit addresses for an agent's Safe wallet.
+    """Get cross-chain deposit addresses for a Polymarket Safe wallet.
 
-    Returns deposit addresses for:
-    - **EVM** (Ethereum, Polygon, Arbitrum, Base, etc.)
-    - **Solana** (SVM)
-    - **Bitcoin** (BTC)
+    Pass either:
+    - `safeAddress` directly (no auth required — api_key ignored)
+    - `agentId` + `x-api-key` header to auto-resolve the Safe from your registered agent
 
-    Funds are bridged directly to the agent's Polymarket Safe wallet (not the EOA).
+    Returns unique deposit addresses per chain type:
+    - **evm** — Ethereum, Base, Arbitrum, Optimism, other EVM chains
+    - **svm** — Solana
+    - **btc** — Bitcoin
+    - **tvm** — Tron
+
+    Funds bridge automatically to USDC.e on your Polygon Safe wallet.
     """
-    # Verify ownership
-    key_hash = hash_api_key(api_key)
-    agent = await store.get_agent_by_key_hash(key_hash)
-    if not agent or agent.agent_id != req.agentId:
-        raise HTTPException(status_code=403, detail="API key does not match agent")
+    if req.safeAddress:
+        safe_address = req.safeAddress
+        eoa_address = None
+        agent_id = None
+    elif req.agentId:
+        if not x_api_key:
+            raise HTTPException(status_code=401, detail="API key required when using agentId")
+        key_hash = hash_api_key(x_api_key)
+        agent = await store.get_agent_by_key_hash(key_hash)
+        if not agent or agent.agent_id != req.agentId:
+            raise HTTPException(status_code=403, detail="API key does not match agent")
+        safe_address = _get_safe_address(agent.wallet_address)
+        eoa_address = agent.wallet_address
+        agent_id = req.agentId
+    else:
+        raise HTTPException(status_code=400, detail="Provide either safeAddress or agentId")
 
-    # Get the Safe address — bridge funds go HERE, not the EOA
-    safe_address = _get_safe_address(agent.wallet_address)
-
-    # Call Polymarket Bridge API with the Safe address
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(
             f"{BRIDGE_BASE}/deposit",
@@ -130,14 +151,30 @@ async def create_deposit_address(
             )
         data = resp.json()
 
-    return {
-        "agentId": req.agentId,
-        "eoaAddress": agent.wallet_address,
-        "safeAddress": safe_address,
-        "depositAddresses": data.get("address", {}),
-        "note": "Funds will be bridged to USDC.e on your Polymarket Safe wallet.",
-        "_tip": f"Bridge deposits go to your Safe ({safe_address}), not your EOA.",
+    raw_addresses = data.get("address", {})
+
+    # Annotate each address type with which chains it supports
+    deposit_addresses = {
+        addr_type: {
+            "address": addr_val,
+            "supportedChains": ADDRESS_TYPE_CHAINS.get(addr_type, []),
+            "tip": f"Use this address when sending from {', '.join(ADDRESS_TYPE_CHAINS.get(addr_type, [addr_type]))}",
+        }
+        for addr_type, addr_val in raw_addresses.items()
     }
+
+    result = {
+        "safeAddress": safe_address,
+        "depositAddresses": deposit_addresses,
+        "note": "Funds bridge to USDC.e on your Polygon Safe wallet automatically.",
+        "forBase": deposit_addresses.get("evm", {}).get("address", "evm address not returned"),
+    }
+    if agent_id:
+        result["agentId"] = agent_id
+    if eoa_address:
+        result["eoaAddress"] = eoa_address
+
+    return result
 
 
 @router.post("/quote")

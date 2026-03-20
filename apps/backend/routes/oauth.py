@@ -212,7 +212,7 @@ async def get_user_agents(request: Request):
     # Get agents linked to this user via the owner_id column in the agents table
     try:
         rows = await pool.fetch(
-            "SELECT agent_id, wallet_address, wallet_index, polygon_safe, solana_vault, auto_rebalance, auto_freemonies, created_at FROM agents WHERE owner_id = $1 ORDER BY created_at DESC",
+            "SELECT agent_id, wallet_address, wallet_index, polygon_safe, solana_wallet, auto_rebalance, auto_freemonies, created_at FROM agents WHERE owner_id = $1 ORDER BY created_at DESC",
             user["sub"],
         )
     except Exception as e:
@@ -225,7 +225,7 @@ async def get_user_agents(request: Request):
             "walletAddress": r["wallet_address"],
             "walletIndex": r["wallet_index"],
             "polygonSafe": r.get("polygon_safe") or "",
-            "solanaAddress": r.get("solana_vault") or "",
+            "solanaAddress": r.get("solana_wallet") or "",
             "autoRebalance": bool(r.get("auto_rebalance", False)),
             "autoFreemonies": bool(r.get("auto_freemonies", False)),
             "createdAt": str(r["created_at"]),

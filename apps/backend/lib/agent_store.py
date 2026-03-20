@@ -16,7 +16,7 @@ class Agent:
     api_key_hash: str
     wallet_index: int
     polygon_safe: str
-    solana_vault: str
+    solana_wallet: str
     scopes: list[str]
     created_at: str
     auto_rebalance: bool = False
@@ -39,7 +39,7 @@ class AgentStore:
         api_key_hash: str,
         wallet_index: int = 0,
         polygon_safe: str = "",
-        solana_vault: str = "",
+        solana_wallet: str = "",
     ) -> Agent:
         """Register a new agent. Raises ValueError if already exists."""
         pool = get_pool()
@@ -49,7 +49,7 @@ class AgentStore:
         try:
             await pool.execute(
                 """
-                INSERT INTO agents (agent_id, wallet_address, api_key_hash, wallet_index, polygon_safe, solana_vault, scopes, created_at)
+                INSERT INTO agents (agent_id, wallet_address, api_key_hash, wallet_index, polygon_safe, solana_wallet, scopes, created_at)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 """,
                 agent_id,
@@ -57,7 +57,7 @@ class AgentStore:
                 api_key_hash,
                 wallet_index,
                 polygon_safe,
-                solana_vault,
+                solana_wallet,
                 scopes,
                 now,
             )
@@ -72,7 +72,7 @@ class AgentStore:
             api_key_hash=api_key_hash,
             wallet_index=wallet_index,
             polygon_safe=polygon_safe,
-            solana_vault=solana_vault,
+            solana_wallet=solana_wallet,
             scopes=scopes,
             created_at=now.isoformat(),
         )
@@ -122,7 +122,7 @@ class AgentStore:
             api_key_hash=row["api_key_hash"],
             wallet_index=row.get("wallet_index", 0) or 0,
             polygon_safe=row.get("polygon_safe") or "",
-            solana_vault=row.get("solana_vault") or "",
+            solana_wallet=row.get("solana_wallet") or "",
             scopes=list(row["scopes"]) if row["scopes"] else [],
             created_at=row["created_at"].isoformat() if row["created_at"] else "",
             auto_rebalance=bool(row.get("auto_rebalance", False)),

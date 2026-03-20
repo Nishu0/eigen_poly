@@ -209,7 +209,7 @@ async def _get_agent_solana_address(api_key: str) -> str:
     agent = await store.get_agent_by_key_hash(key_hash)
     if not agent:
         raise HTTPException(status_code=403, detail="Invalid API key")
-    return agent.solana_vault or ""
+    return agent.solana_wallet or ""
 
 
 # ── Free endpoints (no auth) ──────────────────────────────────────────────────
@@ -374,7 +374,7 @@ async def metengine_capacity(api_key: str = Depends(require_api_key)):
     """
     solana_addr = await _get_agent_solana_address(api_key)
     if not solana_addr:
-        raise HTTPException(status_code=503, detail="no solana vault address on record for this agent — re-register to get one")
+        raise HTTPException(status_code=503, detail="no solana wallet address on record for this agent — re-register to get one")
 
     balance = await _get_solana_usdc_balance(solana_addr)
 

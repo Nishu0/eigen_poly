@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS agents (
     api_key_hash TEXT UNIQUE NOT NULL,
     wallet_index INTEGER DEFAULT 0,
     polygon_safe TEXT DEFAULT '',
-    solana_vault TEXT DEFAULT '',
+    solana_wallet TEXT DEFAULT '',
     scopes TEXT[] DEFAULT ARRAY['trade','balance','markets'],
     owner_id TEXT REFERENCES users(user_id),
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -109,6 +109,11 @@ CREATE INDEX IF NOT EXISTS idx_device_codes_agent ON device_codes(agent_id);
 -- agent feature flags (idempotent migration)
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS auto_rebalance BOOLEAN DEFAULT FALSE;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS auto_freemonies BOOLEAN DEFAULT FALSE;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='agents' AND column_name='solana_vault') THEN
+    ALTER TABLE agents RENAME COLUMN solana_vault TO solana_wallet;
+  END IF;
+END $$;
 """
 
 

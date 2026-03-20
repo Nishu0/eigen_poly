@@ -44,7 +44,7 @@ class BalanceResponse(BaseModel):
     agentId: str
     polygon_eoa: ChainBalance
     polygon_safe: ChainBalance
-    solana_vault: ChainBalance
+    solana_wallet: ChainBalance
     base_eoa: ChainBalance
     total_usdc: float
     flags: dict
@@ -135,7 +135,7 @@ async def get_balance(
         raise HTTPException(status_code=503, detail="polygon RPC not configured (CHAINSTACK_NODE)")
 
     safe_addr = agent.polygon_safe or derive_polymarket_safe(agent.wallet_address)
-    solana_addr = agent.solana_vault or ""
+    solana_addr = agent.solana_wallet or ""
 
     loop = asyncio.get_event_loop()
 
@@ -166,7 +166,7 @@ async def get_balance(
             native=round(pol_safe_native, 6), native_symbol="POL",
             usdc=round(pol_safe_usdc, 6),
         ),
-        solana_vault=ChainBalance(
+        solana_wallet=ChainBalance(
             chain="solana", chain_logo=CHAIN_LOGOS["solana"],
             address=solana_addr or "not derived",
             native=round(sol_native, 6), native_symbol="SOL",

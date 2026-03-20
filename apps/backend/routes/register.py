@@ -51,7 +51,7 @@ def _get_safe_address(eoa_address: str) -> str:
 
 @router.post("/register", response_model=RegisterResponse)
 async def register_agent(req: RegisterRequest):
-    """Register an agent — get API key + EVM wallet + Solana vault + claim URL."""
+    """Register an agent — get API key + EVM wallet + Solana wallet + claim URL."""
 
     existing = await store.get_agent(req.agentId)
     if existing:
@@ -68,7 +68,7 @@ async def register_agent(req: RegisterRequest):
         wallet_address = account.address
         wallet_mode = "local"
 
-    # derive Solana vault from same MNEMONIC
+    # derive Solana wallet from same MNEMONIC
     solana_address = ""
     if is_tee_mode():
         try:
@@ -87,7 +87,7 @@ async def register_agent(req: RegisterRequest):
         api_key_hash=key_hash,
         wallet_index=wallet_index,
         polygon_safe=safe_address,
-        solana_vault=solana_address,
+        solana_wallet=solana_address,
     )
 
     device = await create_device_code(req.agentId)
@@ -100,7 +100,7 @@ async def register_agent(req: RegisterRequest):
         walletAddress=wallet_address,
         safeWalletAddress=safe_address,
         solanaAddress=solana_address,
-        walletType="EOA + Safe + Solana vault",
+        walletType="EOA + Safe + Solana wallet",
         walletMode=wallet_mode,
         claimCode=device["userCode"],
         claimUrl=claim_url,
@@ -109,7 +109,7 @@ async def register_agent(req: RegisterRequest):
         fundingInfo={
             "polygon_eoa": wallet_address,
             "polygon_safe": safe_address,
-            "solana_vault": solana_address,
+            "solana_wallet": solana_address,
             "usdc_e_contract": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
             "solana_usdc_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
             "note": "fund eoa for polymarket trading (usdc.e on polygon). fund solana vault for metengine x402 calls (usdc on solana mainnet).",

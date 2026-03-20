@@ -68,14 +68,14 @@ response:
   "walletAddress": "0x...",
   "safeWalletAddress": "0x...",
   "solanaAddress": "8B9aLD...",
-  "walletType": "EOA + Safe + Solana vault",
+  "walletType": "EOA + Safe + Solana wallet",
   "walletMode": "tee",
   "claimCode": "ABCD-1234",
   "claimUrl": "https://www.eigenpoly.xyz/device?code=ABCD-1234",
   "fundingInfo": {
     "polygon_eoa": "0x...",
     "polygon_safe": "0x...",
-    "solana_vault": "8B9aLD...",
+    "solana_wallet": "8B9aLD...",
     "note": "fund polygon eoa with usdc.e for trading. fund solana vault with usdc for metengine x402 calls."
   }
 }
@@ -86,7 +86,7 @@ the apiKey is shown **once**. store it immediately.
 three wallets are derived from the tee mnemonic:
 - **polygon eoa** — trading signer, fund with usdc.e on polygon
 - **polygon safe** — polymarket proxy wallet
-- **solana vault** — fund with usdc on solana mainnet for metengine x402 payments
+- **solana wallet** — fund with usdc on solana mainnet for metengine x402 payments
 
 ### 2. store credentials
 
@@ -133,7 +133,7 @@ response:
   "agentId": "my-agent-001",
   "polygon_eoa":  { "chain": "polygon", "chain_logo": "...", "address": "0x...", "native": 1.25, "native_symbol": "POL", "usdc": 500.0, "usdc_logo": "..." },
   "polygon_safe": { "chain": "polygon", "chain_logo": "...", "address": "0x...", "native": 0.0, "native_symbol": "POL", "usdc": 0.0,   "usdc_logo": "..." },
-  "solana_vault": { "chain": "solana",  "chain_logo": "...", "address": "8B9...", "native": 0.05, "native_symbol": "SOL", "usdc": 2.5, "usdc_logo": "..." },
+  "solana_wallet": { "chain": "solana",  "chain_logo": "...", "address": "8B9...", "native": 0.05, "native_symbol": "SOL", "usdc": 2.5, "usdc_logo": "..." },
   "base_eoa":     { "chain": "base",    "chain_logo": "...", "address": "0x...", "native": 0.0, "native_symbol": "ETH", "usdc": 0.0,   "usdc_logo": "..." },
   "total_usdc": 502.5,
   "flags": { "auto_rebalance": false, "auto_freemonies": false }
@@ -265,7 +265,7 @@ market analysis with per-market `liquidity_score` (HIGH/MEDIUM/LOW), `opportunit
 
 ### metengine — smart money analytics (x402 solana pay-per-use)
 
-every paid endpoint automatically charges your solana vault usdc via x402. check capacity first.
+every paid endpoint automatically charges your solana wallet usdc via x402. check capacity first.
 
 **how x402 works:**
 1. request hits endpoint
@@ -293,7 +293,7 @@ response:
 }
 ```
 
-if `low_balance_warning` is true, fund the solana vault before proceeding:
+if `low_balance_warning` is true, fund the solana wallet before proceeding:
 - address: the `solana_address` from the response
 - send usdc on solana mainnet (mint: `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`)
 
@@ -475,8 +475,8 @@ platform stats: total agents, trades, volume, open positions.
 
 ## agent trading flow
 
-1. **register** — `POST /register` — get api key + polygon eoa + solana vault
-2. **fund** — send usdc.e to polygon eoa for trading, usdc to solana vault for metengine
+1. **register** — `POST /register` — get api key + polygon eoa + solana wallet
+2. **fund** — send usdc.e to polygon eoa for trading, usdc to solana wallet for metengine
 3. **check capacity** — `GET /metengine/capacity` — confirm solana usdc before paid calls
 4. **find markets** — `GET /markets/search?q=...` or `GET /metengine/opportunities`
 5. **analyze** — `GET /markets/analysis` or `GET /metengine/intelligence/{id}`
@@ -490,7 +490,7 @@ platform stats: total agents, trades, volume, open positions.
 | route | method | auth | description |
 |-------|--------|------|-------------|
 | `/register` | POST | none | register agent, get api key + evm + solana wallets |
-| `/balance/{id}` | GET | x-api-key | multi-chain: polygon eoa+safe, solana vault, base eoa |
+| `/balance/{id}` | GET | x-api-key | multi-chain: polygon eoa+safe, solana wallet, base eoa |
 | `/trade` | POST | x-api-key | place bet on polymarket |
 | `/agents/{id}/positions` | GET | x-api-key | positions with live p&l |
 | `/agents/{id}/trades` | GET | x-api-key | trade history |
