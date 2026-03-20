@@ -1214,7 +1214,7 @@ interface ChainBal {
 interface BalanceData {
   polygon_eoa: ChainBal;
   polygon_safe: ChainBal;
-  solana_vault: ChainBal;
+  solana_wallet: ChainBal;
   base_eoa: ChainBal;
   total_usdc: number;
 }
@@ -1243,7 +1243,7 @@ function WalletBalances({ agentId }: { agentId: string }) {
   const rows: { label: string; key: keyof Omit<BalanceData, "total_usdc"> }[] = [
     { label: "polygon eoa",  key: "polygon_eoa" },
     { label: "polygon safe", key: "polygon_safe" },
-    { label: "solana vault", key: "solana_vault" },
+    { label: "solana wallet", key: "solana_wallet" },
     { label: "base eoa",     key: "base_eoa" },
   ];
 
